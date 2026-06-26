@@ -150,53 +150,68 @@ class SebhaOverlay(QWidget):
         self.options_container = QWidget()
         options_layout = QHBoxLayout(self.options_container)
         options_layout.setContentsMargins(0, 10, 0, 0)
+        options_layout.setSpacing(8)
         options_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
         
         self.btn_style = """
             QPushButton {
                 background-color: rgba(255, 255, 255, 40);
                 color: white;
-                border-radius: 5px;
-                padding: 6px 15px;
+                border-radius: 17px;
+                min-width: 34px;
+                max-width: 34px;
+                min-height: 34px;
+                max-height: 34px;
+                padding: 0px;
                 font-weight: bold;
             }
             QPushButton:hover {
                 background-color: rgba(255, 255, 255, 80);
             }
         """
-        self.reset_btn = QPushButton("Reset")
-        self.reset_btn.setFont(self.get_english_font(11, True))
+        self.reset_btn = QPushButton("✖")
+        self.reset_btn.setFont(self.get_english_font(12, True))
         self.reset_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.reset_btn.setStyleSheet(self.btn_style.replace("40", "80").replace("255, 255, 255", "255, 80, 80"))
-        self.reset_btn.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self.reset_btn.clicked.connect(self.reset_count)
         
-        self.morning_btn = QPushButton("☀️ أذكار الصباح")
-        self.morning_btn.setFont(self.get_arabic_font(11, True))
+        self.morning_btn = QPushButton("☀️")
+        self.morning_btn.setFont(self.get_arabic_font(12, True))
         self.morning_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.morning_btn.setStyleSheet(self.btn_style)
-        self.morning_btn.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self.morning_btn.clicked.connect(lambda: self.start_session('MORNING'))
         
-        self.night_btn = QPushButton("🌙 أذكار المساء")
-        self.night_btn.setFont(self.get_arabic_font(11, True))
+        self.night_btn = QPushButton("🌙")
+        self.night_btn.setFont(self.get_arabic_font(12, True))
         self.night_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.night_btn.setStyleSheet(self.btn_style)
-        self.night_btn.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self.night_btn.clicked.connect(lambda: self.start_session('NIGHT'))
 
-        self.exit_btn = QPushButton("Exit Session")
-        self.exit_btn.setFont(self.get_english_font(11, True))
+        self.exit_btn = QPushButton("✖")
+        self.exit_btn.setFont(self.get_english_font(12, True))
         self.exit_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.exit_btn.setStyleSheet(self.btn_style.replace("40", "80").replace("255, 255, 255", "255, 80, 80"))
-        self.exit_btn.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self.exit_btn.clicked.connect(self.exit_session)
         self.exit_btn.setVisible(False)
 
+        self.back_btn = QPushButton("◀")
+        self.back_btn.setFont(self.get_english_font(12, True))
+        self.back_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.back_btn.setStyleSheet(self.btn_style)
+        self.back_btn.clicked.connect(self.prev_zikr)
+
+        self.next_btn = QPushButton("▶")
+        self.next_btn.setFont(self.get_english_font(12, True))
+        self.next_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.next_btn.setStyleSheet(self.btn_style)
+        self.next_btn.clicked.connect(self.next_zikr)
+
+        options_layout.addWidget(self.back_btn)
         options_layout.addWidget(self.morning_btn)
         options_layout.addWidget(self.night_btn)
         options_layout.addWidget(self.reset_btn)
         options_layout.addWidget(self.exit_btn)
+        options_layout.addWidget(self.next_btn)
         
         self.options_container.setVisible(False)
 
@@ -227,10 +242,12 @@ class SebhaOverlay(QWidget):
             self.count_label.setStyleSheet("color: #4CAF50;")
             self.count_label.setVisible(True)
             
+            self.back_btn.setVisible(True)
             self.morning_btn.setVisible(True)
             self.night_btn.setVisible(True)
             self.reset_btn.setVisible(True)
             self.exit_btn.setVisible(False)
+            self.next_btn.setVisible(True)
             
             target_width = 350 if is_hovered else 250
         else:
@@ -266,10 +283,12 @@ class SebhaOverlay(QWidget):
                 self.finish_session()
                 return
 
+            self.back_btn.setVisible(True)
             self.morning_btn.setVisible(False)
             self.night_btn.setVisible(False)
             self.reset_btn.setVisible(False)
             self.exit_btn.setVisible(True)
+            self.next_btn.setVisible(True)
             
             target_width = 500
             
@@ -406,3 +425,28 @@ class SebhaOverlay(QWidget):
             elif event.angleDelta().y() < 0:
                 self.change_zikr(1)
         super().wheelEvent(event)
+
+    def prev_zikr(self):
+        if self.mode == 'FREE':
+            self.change_zikr(-1)
+        else:
+            if self.session_index > 0:
+                self.session_index -= 1
+                self.session_count = 0
+                self.zikr_label.setText("")
+                self.benefit_label.setText("")
+                self.update_ui_state()
+                self.show_overlay()
+
+    def next_zikr(self):
+        if self.mode == 'FREE':
+            self.change_zikr(1)
+        else:
+            session_data = self.db.get(self.mode.lower(), [])
+            if self.session_index < len(session_data):
+                self.session_index += 1
+                self.session_count = 0
+                self.zikr_label.setText("")
+                self.benefit_label.setText("")
+                self.update_ui_state()
+                self.show_overlay()
