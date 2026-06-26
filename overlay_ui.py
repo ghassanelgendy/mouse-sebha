@@ -143,7 +143,7 @@ class SebhaOverlay(QWidget):
         self.benefit_label.setVisible(False)
         
         self.count_label = QLabel(str(self.count))
-        self.count_label.setFont(self.get_english_font(36, True)) # Use English/Numbers font
+        self.count_label.setFont(self.get_english_font(20, True)) # Use English/Numbers font
         self.count_label.setStyleSheet("color: #4CAF50;")
         self.count_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
@@ -225,6 +225,7 @@ class SebhaOverlay(QWidget):
             self.benefit_label.setVisible(False)
             self.count_label.setText(str(self.count))
             self.count_label.setStyleSheet("color: #4CAF50;")
+            self.count_label.setVisible(True)
             
             self.morning_btn.setVisible(True)
             self.night_btn.setVisible(True)
@@ -245,7 +246,7 @@ class SebhaOverlay(QWidget):
                     self.zikr_label.setFont(self.get_arabic_font(font_size, True))
                 
                 benefit = item.get("benefit", "")
-                if benefit:
+                if benefit and is_hovered:
                     if self.benefit_label.text() != benefit:
                         self.benefit_label.setText(benefit)
                         benefit_size = self.get_dynamic_font_size(benefit, 14)
@@ -257,6 +258,10 @@ class SebhaOverlay(QWidget):
                 target = item.get("target_count", 1)
                 self.count_label.setText(f"{self.session_count} / {target}")
                 self.count_label.setStyleSheet("color: #2196F3;")
+                if target == 1:
+                    self.count_label.setVisible(False)
+                else:
+                    self.count_label.setVisible(True)
             else:
                 self.finish_session()
                 return
@@ -310,7 +315,7 @@ class SebhaOverlay(QWidget):
         self.mode = mode
         self.session_index = 0
         self.session_count = 0
-        self.hide_timer.stop()
+        self.hide_timer.start()
         # Force text update and scroll reset by clearing labels first
         self.zikr_label.setText("")
         self.benefit_label.setText("")
@@ -373,15 +378,9 @@ class SebhaOverlay(QWidget):
 
     def show_overlay(self):
         self.show()
-        if self.mode == 'FREE':
-            self.hide_timer.start()
-        else:
-            self.hide_timer.stop()
+        self.hide_timer.start()
         
     def hide_overlay(self):
-        if self.mode != 'FREE':
-            return
-            
         if not self.is_cursor_inside():
             self.hide()
             self.options_container.setVisible(False)
@@ -396,8 +395,7 @@ class SebhaOverlay(QWidget):
     def leaveEvent(self, event):
         if not self.is_cursor_inside():
             self.options_container.setVisible(False)
-            if self.mode == 'FREE':
-                self.hide_timer.start()
+            self.hide_timer.start()
             self.update_ui_state()
         super().leaveEvent(event)
         
