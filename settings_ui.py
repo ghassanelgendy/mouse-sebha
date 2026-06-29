@@ -61,6 +61,15 @@ class AssignButtonDialog(QDialog):
             self.listener.stop()
         super().closeEvent(event)
 
+    def keyPressEvent(self, event):
+        if event.key() == Qt.Key.Key_Escape:
+            if self.listener:
+                self.listener.stop()
+            self.finished_signal.emit("Key.esc")
+            event.accept()
+        else:
+            super().keyPressEvent(event)
+
 class WeeklyBarChart(QWidget):
     def __init__(self, history, parent=None):
         super().__init__(parent)
@@ -206,7 +215,8 @@ class SettingsDialog(QDialog):
         # Mouse Trigger
         mouse_layout = QHBoxLayout()
         mouse_layout.addWidget(QLabel("Mouse Button:"))
-        self.mouse_btn_lbl = QLabel(self.config.get("trigger_mouse", "Button.x2"))
+        trigger_m = self.config.get("trigger_mouse", "Button.x2")
+        self.mouse_btn_lbl = QLabel(trigger_m if trigger_m else "None")
         mouse_layout.addWidget(self.mouse_btn_lbl)
         self.assign_mouse_btn = QPushButton("Assign")
         self.assign_mouse_btn.clicked.connect(self.assign_mouse)
@@ -400,18 +410,18 @@ class SettingsDialog(QDialog):
     def assign_mouse(self):
         d = AssignButtonDialog(is_mouse=True, parent=self)
         if d.exec():
-            if d.result_value:
-                self.config["trigger_mouse"] = d.result_value
-                self.mouse_btn_lbl.setText(d.result_value)
-                self.save_config()
+            val = d.result_value if (d.result_value and d.result_value != "Key.esc") else ""
+            self.config["trigger_mouse"] = val
+            self.mouse_btn_lbl.setText(val if val else "None")
+            self.save_config()
 
     def assign_keyboard(self):
         d = AssignButtonDialog(is_mouse=False, parent=self)
         if d.exec():
-            if d.result_value:
-                self.config["trigger_keyboard"] = d.result_value
-                self.key_btn_lbl.setText(d.result_value)
-                self.save_config()
+            val = d.result_value if (d.result_value and d.result_value != "Key.esc") else ""
+            self.config["trigger_keyboard"] = val
+            self.key_btn_lbl.setText(val if val else "None")
+            self.save_config()
 
     def check_startup(self):
         startup_dir = os.path.join(os.environ['APPDATA'], r'Microsoft\Windows\Start Menu\Programs\Startup')

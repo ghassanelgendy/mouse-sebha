@@ -1,7 +1,7 @@
 import os
 import json
 import sys
-from PyQt6.QtWidgets import QApplication, QWidget, QVBoxLayout, QLabel, QPushButton, QHBoxLayout, QSpacerItem, QSizePolicy
+from PyQt6.QtWidgets import QApplication, QWidget, QVBoxLayout, QLabel, QPushButton, QHBoxLayout, QSpacerItem, QSizePolicy, QGraphicsOpacityEffect
 from PyQt6.QtCore import Qt, QTimer, QPoint, QRect, QPropertyAnimation, QEasingCurve
 from PyQt6.QtGui import QColor, QPalette, QFont, QFontDatabase
 
@@ -52,12 +52,12 @@ class SebhaOverlay(QWidget):
         self.anim.setDuration(250)
         self.anim.setEasingCurve(QEasingCurve.Type.OutQuad)
 
+        self.initUI()
+
         # Setup persistent opacity animation for smooth transitions
-        self.fade_anim = QPropertyAnimation(self, b"windowOpacity")
+        self.fade_anim = QPropertyAnimation(self.opacity_effect, b"opacity")
         self.fade_anim.setDuration(200)
         self.fade_anim.finished.connect(self.on_fade_finished)
-
-        self.initUI()
         
         self.hide_timer = QTimer(self)
         self.hide_timer.timeout.connect(self.hide_overlay)
@@ -158,6 +158,10 @@ class SebhaOverlay(QWidget):
                 border-radius: 15px;
             }
         """)
+        
+        self.opacity_effect = QGraphicsOpacityEffect(self.container)
+        self.container.setGraphicsEffect(self.opacity_effect)
+        self.opacity_effect.setOpacity(1.0)
         
         container_layout = QVBoxLayout(self.container)
         container_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -449,7 +453,7 @@ class SebhaOverlay(QWidget):
         self.stats["history"][today][event_type] += 1
 
     def on_fade_finished(self):
-        if self.windowOpacity() == 0.0:
+        if self.opacity_effect.opacity() == 0.0:
             self.hide()
             self.options_container.setVisible(False)
             self.update_ui_state()
@@ -459,10 +463,10 @@ class SebhaOverlay(QWidget):
         if self.fade_anim.state() == QPropertyAnimation.State.Running and self.fade_anim.direction() == QPropertyAnimation.Direction.Forward:
             return
         if not self.isVisible():
-            self.setWindowOpacity(0.0)
+            self.opacity_effect.setOpacity(0.0)
             self.show()
         self.fade_anim.stop()
-        self.fade_anim.setStartValue(self.windowOpacity())
+        self.fade_anim.setStartValue(self.opacity_effect.opacity())
         self.fade_anim.setEndValue(1.0)
         self.fade_anim.setDirection(QPropertyAnimation.Direction.Forward)
         self.fade_anim.start()
@@ -472,7 +476,7 @@ class SebhaOverlay(QWidget):
             if self.fade_anim.state() == QPropertyAnimation.State.Running and self.fade_anim.direction() == QPropertyAnimation.Direction.Backward:
                 return
             self.fade_anim.stop()
-            self.fade_anim.setStartValue(self.windowOpacity())
+            self.fade_anim.setStartValue(self.opacity_effect.opacity())
             self.fade_anim.setEndValue(0.0)
             self.fade_anim.setDirection(QPropertyAnimation.Direction.Backward)
             self.fade_anim.start()
@@ -482,7 +486,7 @@ class SebhaOverlay(QWidget):
         self.options_container.setVisible(True)
         self.update_ui_state()
         self.fade_anim.stop()
-        self.setWindowOpacity(1.0)
+        self.opacity_effect.setOpacity(1.0)
         super().enterEvent(event)
 
     def leaveEvent(self, event):
