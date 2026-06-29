@@ -43,6 +43,11 @@ class SebhaOverlay(QWidget):
         self.anim.setDuration(250)
         self.anim.setEasingCurve(QEasingCurve.Type.OutQuad)
 
+        # Setup persistent opacity animation for smooth transitions
+        self.fade_anim = QPropertyAnimation(self, b"windowOpacity")
+        self.fade_anim.setDuration(200)
+        self.fade_anim.finished.connect(self.on_fade_finished)
+
         self.initUI()
         
         self.hide_timer = QTimer(self)
@@ -62,6 +67,17 @@ class SebhaOverlay(QWidget):
                     self.azkar_list = data.get("azkar_list", ["سبحان الله"])
                     if "stats" in data:
                         self.stats = data["stats"]
+                        
+                    if self.zikr not in self.azkar_list:
+                        if self.azkar_list:
+                            self.zikr = self.azkar_list[0]
+                            self.zikr_index = 0
+                        else:
+                            self.zikr = "سبحان الله"
+                            self.azkar_list = ["سبحان الله"]
+                            self.zikr_index = 0
+                    else:
+                        self.zikr_index = self.azkar_list.index(self.zikr)
             except Exception as e:
                 print("Error loading config:", e)
 
@@ -355,8 +371,10 @@ class SebhaOverlay(QWidget):
     def finish_session(self):
         if self.mode == 'MORNING':
             self.stats["morning_sessions_completed"] += 1
+            self.log_history_event("morning_sessions")
         elif self.mode == 'NIGHT':
             self.stats["night_sessions_completed"] += 1
+            self.log_history_event("night_sessions")
         self.save_config()
         self.exit_session()
 
@@ -371,6 +389,7 @@ class SebhaOverlay(QWidget):
         if self.mode == 'FREE':
             self.count += 1
             self.stats["total_free_clicks"] += 1
+            self.log_history_event("free_clicks")
             self.count_label.setText(str(self.count))
             self.save_config()
             self.show_overlay()
@@ -407,20 +426,54 @@ class SebhaOverlay(QWidget):
         self.update_ui_state()
         self.save_config()
 
-    def show_overlay(self):
-        self.show()
-        self.hide_timer.start()
-        
-    def hide_overlay(self):
-        if not self.is_cursor_inside():
+    def log_history_event(self, event_type):
+        from datetime import date
+        today = date.today().isoformat()
+        if "history" not in self.stats:
+            self.stats["history"] = {}
+        if today not in self.stats["history"]:
+            self.stats["history"][today] = {
+                "free_clicks": 0,
+                "morning_sessions": 0,
+                "night_sessions": 0
+            }
+        self.stats["history"][today][event_type] += 1
+
+    def on_fade_finished(self):
+        if self.windowOpacity() == 0.0:
             self.hide()
             self.options_container.setVisible(False)
             self.update_ui_state()
+
+    def show_overlay(self):
+        self.hide_timer.start()
+        if self.fade_anim.state() == QPropertyAnimation.State.Running and self.fade_anim.direction() == QPropertyAnimation.Direction.Forward:
+            return
+        if not self.isVisible():
+            self.setWindowOpacity(0.0)
+            self.show()
+        self.fade_anim.stop()
+        self.fade_anim.setStartValue(self.windowOpacity())
+        self.fade_anim.setEndValue(1.0)
+        self.fade_anim.setDirection(QPropertyAnimation.Direction.Forward)
+        self.fade_anim.start()
+        
+    def hide_overlay(self):
+        if not self.is_cursor_inside():
+            if self.fade_anim.state() == QPropertyAnimation.State.Running and self.fade_anim.direction() == QPropertyAnimation.Direction.Backward:
+                return
+            self.fade_anim.stop()
+            self.fade_anim.setStartValue(self.windowOpacity())
+            self.fade_anim.setEndValue(0.0)
+            self.fade_anim.setDirection(QPropertyAnimation.Direction.Backward)
+            self.fade_anim.start()
 
     def enterEvent(self, event):
         self.hide_timer.stop()
         self.options_container.setVisible(True)
         self.update_ui_state()
+        self.fade_anim.stop()
+        self.setWindowOpacity(1.0)
         super().enterEvent(event)
 
     def leaveEvent(self, event):

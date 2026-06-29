@@ -3,8 +3,10 @@ import json
 import os
 import subprocess
 from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel, 
-                             QPushButton, QTabWidget, QWidget, QCheckBox)
-from PyQt6.QtCore import Qt, pyqtSignal
+                             QPushButton, QTabWidget, QWidget, QCheckBox,
+                             QListWidget, QLineEdit, QMessageBox)
+from PyQt6.QtCore import Qt, pyqtSignal, QRect
+from PyQt6.QtGui import QPainter, QColor, QFont
 from pynput import mouse, keyboard
 
 CONFIG_PATH = "config.json"
@@ -59,13 +61,116 @@ class AssignButtonDialog(QDialog):
             self.listener.stop()
         super().closeEvent(event)
 
+class WeeklyBarChart(QWidget):
+    def __init__(self, history, parent=None):
+        super().__init__(parent)
+        self.history = history or {}
+        self.setMinimumHeight(150)
+        
+    def update_history(self, history):
+        self.history = history or {}
+        self.update()
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        
+        # Calculate last 7 days
+        from datetime import date, timedelta
+        today = date.today()
+        days = [today - timedelta(days=i) for i in range(6, -1, -1)]
+        
+        # Get data for each day
+        counts = []
+        for d in days:
+            d_str = d.isoformat()
+            day_data = self.history.get(d_str, {})
+            # Activity score = free clicks + (morning_sessions * 33) + (night_sessions * 33)
+            score = day_data.get("free_clicks", 0) + day_data.get("morning_sessions", 0) * 33 + day_data.get("night_sessions", 0) * 33
+            counts.append((d.strftime("%a"), score))
+            
+        max_score = max([c[1] for c in counts] + [100]) # scale to at least 100
+        
+        w = self.width()
+        h = self.height()
+        padding_x = 25
+        padding_y = 20
+        chart_w = w - 2 * padding_x
+        chart_h = h - 2 * padding_y - 20
+        
+        col_w = chart_w / 7
+        bar_w = max(16, int(col_w * 0.5))
+        
+        for i, (day_name, score) in enumerate(counts):
+            col_x = padding_x + i * col_w
+            bar_h = int((score / max_score) * chart_h)
+            bar_x = int(col_x + (col_w - bar_w) / 2)
+            bar_y = h - padding_y - 20 - bar_h
+            
+            # Draw bottom line
+            painter.setPen(QColor(230, 230, 230))
+            painter.drawLine(padding_x, h - padding_y - 20, w - padding_x, h - padding_y - 20)
+            
+            if score > 0:
+                painter.setBrush(QColor(76, 175, 80, 220)) # green color
+            else:
+                painter.setBrush(QColor(240, 240, 240)) # very light gray for zero
+                bar_h = 4
+                bar_y = h - padding_y - 20 - bar_h
+                
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.drawRoundedRect(bar_x, bar_y, bar_w, bar_h, 3, 3)
+            
+            # Draw score text on top of bar if > 0
+            if score > 0:
+                painter.setPen(QColor(80, 80, 80))
+                painter.setFont(QFont("Segoe UI", 8, QFont.Weight.Bold))
+                painter.drawText(QRect(bar_x - 15, bar_y - 18, bar_w + 30, 18), Qt.AlignmentFlag.AlignCenter, str(score))
+                
+            # Draw day name
+            painter.setPen(QColor(130, 130, 130))
+            painter.setFont(QFont("Segoe UI", 9))
+            painter.drawText(QRect(int(col_x), h - padding_y - 15, int(col_w), 20), Qt.AlignmentFlag.AlignCenter, day_name)
+
+def calculate_streak(history):
+    from datetime import date, timedelta
+    if not history:
+        return 0
+    today = date.today()
+    streak = 0
+    current_date = today
+    
+    # Check if active today
+    today_data = history.get(today.isoformat(), {})
+    today_active = (today_data.get("free_clicks", 0) > 0 or 
+                    today_data.get("morning_sessions", 0) > 0 or 
+                    today_data.get("night_sessions", 0) > 0)
+                    
+    # If not active today, check if active yesterday (streak might be active until yesterday if today is not over yet)
+    if not today_active:
+        current_date = today - timedelta(days=1)
+        
+    while True:
+        d_str = current_date.isoformat()
+        day_data = history.get(d_str, {})
+        is_active = (day_data.get("free_clicks", 0) > 0 or 
+                     day_data.get("morning_sessions", 0) > 0 or 
+                     day_data.get("night_sessions", 0) > 0)
+        if is_active:
+            streak += 1
+            current_date -= timedelta(days=1)
+        else:
+            break
+            
+    return streak
+
 class SettingsDialog(QDialog):
     config_updated = pyqtSignal()
     
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Sebha Settings")
-        self.setFixedSize(400, 300)
+        self.setFixedSize(450, 400)
         
         self.config = {}
         self.load_config()
@@ -138,24 +243,159 @@ class SettingsDialog(QDialog):
         free_clicks = stats.get("total_free_clicks", 0)
         mornings = stats.get("morning_sessions_completed", 0)
         nights = stats.get("night_sessions_completed", 0)
+        history = stats.get("history", {})
         
-        lbl_f = QLabel(f"Total Free Clicks: {free_clicks}")
-        lbl_f.setStyleSheet("font-size: 14px; font-weight: bold;")
-        stats_layout.addWidget(lbl_f)
+        # Streak Banner
+        streak = calculate_streak(history)
+        self.streak_label = QLabel(f"🔥 Dhikr Streak: {streak} Day{'s' if streak != 1 else ''}")
+        self.streak_label.setStyleSheet("font-size: 16px; font-weight: bold; color: #FF9800; margin-bottom: 5px;")
+        stats_layout.addWidget(self.streak_label)
         
-        lbl_m = QLabel(f"Morning Sessions Completed: {mornings}")
-        lbl_m.setStyleSheet("font-size: 14px; font-weight: bold;")
-        stats_layout.addWidget(lbl_m)
+        # Lifetime Grid layout
+        lifetime_layout = QHBoxLayout()
         
-        lbl_n = QLabel(f"Night Sessions Completed: {nights}")
-        lbl_n.setStyleSheet("font-size: 14px; font-weight: bold;")
-        stats_layout.addWidget(lbl_n)
+        self.lbl_f = QLabel(f"Free Clicks\n{free_clicks}")
+        self.lbl_f.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.lbl_f.setStyleSheet("background-color: #E8F5E9; padding: 8px; border-radius: 8px; font-size: 11px; font-weight: bold; color: #2E7D32;")
+        
+        self.lbl_m = QLabel(f"Morning Sessions\n{mornings}")
+        self.lbl_m.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.lbl_m.setStyleSheet("background-color: #E3F2FD; padding: 8px; border-radius: 8px; font-size: 11px; font-weight: bold; color: #1565C0;")
+        
+        self.lbl_n = QLabel(f"Night Sessions\n{nights}")
+        self.lbl_n.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.lbl_n.setStyleSheet("background-color: #FFF3E0; padding: 8px; border-radius: 8px; font-size: 11px; font-weight: bold; color: #E65100;")
+        
+        lifetime_layout.addWidget(self.lbl_f)
+        lifetime_layout.addWidget(self.lbl_m)
+        lifetime_layout.addWidget(self.lbl_n)
+        stats_layout.addLayout(lifetime_layout)
+        
+        # Weekly Activity Chart
+        chart_title = QLabel("Weekly Activity (Points)")
+        chart_title.setStyleSheet("font-size: 12px; font-weight: bold; margin-top: 10px; color: #555555;")
+        stats_layout.addWidget(chart_title)
+        
+        self.chart = WeeklyBarChart(history, self)
+        stats_layout.addWidget(self.chart)
         
         stats_layout.addStretch()
-        
         tabs.addTab(stats_tab, "Statistics")
         
+        # Dhikr Editor Tab
+        editor_tab = QWidget()
+        editor_layout = QVBoxLayout(editor_tab)
+        
+        self.zikr_list_widget = QListWidget()
+        self.zikr_list_widget.addItems(self.config.get("azkar_list", ["سبحان الله"]))
+        editor_layout.addWidget(self.zikr_list_widget)
+        
+        add_layout = QHBoxLayout()
+        self.new_zikr_input = QLineEdit()
+        self.new_zikr_input.setPlaceholderText("Enter new Dhikr text...")
+        add_layout.addWidget(self.new_zikr_input)
+        
+        add_btn = QPushButton("Add")
+        add_btn.clicked.connect(self.add_zikr_item)
+        add_layout.addWidget(add_btn)
+        editor_layout.addLayout(add_layout)
+        
+        ctrl_layout = QHBoxLayout()
+        
+        up_btn = QPushButton("Move Up")
+        up_btn.clicked.connect(self.move_zikr_up)
+        ctrl_layout.addWidget(up_btn)
+        
+        down_btn = QPushButton("Move Down")
+        down_btn.clicked.connect(self.move_zikr_down)
+        ctrl_layout.addWidget(down_btn)
+        
+        delete_btn = QPushButton("Delete")
+        delete_btn.setStyleSheet("background-color: rgba(255, 80, 80, 200); color: white;")
+        delete_btn.clicked.connect(self.delete_zikr_item)
+        ctrl_layout.addWidget(delete_btn)
+        
+        editor_layout.addLayout(ctrl_layout)
+        tabs.addTab(editor_tab, "Dhikr Editor")
+        
         layout.addWidget(tabs)
+
+    def showEvent(self, event):
+        self.load_config()
+        self.refresh_stats_ui()
+        super().showEvent(event)
+
+    def refresh_stats_ui(self):
+        stats = self.config.get("stats", {})
+        free_clicks = stats.get("total_free_clicks", 0)
+        mornings = stats.get("morning_sessions_completed", 0)
+        nights = stats.get("night_sessions_completed", 0)
+        history = stats.get("history", {})
+        
+        self.lbl_f.setText(f"Free Clicks\n{free_clicks}")
+        self.lbl_m.setText(f"Morning Sessions\n{mornings}")
+        self.lbl_n.setText(f"Night Sessions\n{nights}")
+        
+        streak = calculate_streak(history)
+        self.streak_label.setText(f"🔥 Dhikr Streak: {streak} Day{'s' if streak != 1 else ''}")
+        self.chart.update_history(history)
+        
+        self.zikr_list_widget.clear()
+        self.zikr_list_widget.addItems(self.config.get("azkar_list", ["سبحان الله"]))
+
+    def add_zikr_item(self):
+        text = self.new_zikr_input.text().strip()
+        if not text:
+            return
+        if text in self.config.get("azkar_list", []):
+            QMessageBox.warning(self, "Duplicate", "This Dhikr is already in your list.")
+            return
+        self.config["azkar_list"] = self.config.get("azkar_list", []) + [text]
+        self.zikr_list_widget.addItem(text)
+        self.new_zikr_input.clear()
+        self.save_config()
+        
+    def delete_zikr_item(self):
+        selected = self.zikr_list_widget.currentRow()
+        if selected == -1:
+            return
+        if self.zikr_list_widget.count() <= 1:
+            QMessageBox.warning(self, "Warning", "You must keep at least one Dhikr in the list.")
+            return
+        
+        item = self.zikr_list_widget.takeItem(selected)
+        del item
+        
+        azkar = []
+        for i in range(self.zikr_list_widget.count()):
+            azkar.append(self.zikr_list_widget.item(i).text())
+        self.config["azkar_list"] = azkar
+        self.save_config()
+        
+    def move_zikr_up(self):
+        row = self.zikr_list_widget.currentRow()
+        if row <= 0:
+            return
+        current_item = self.zikr_list_widget.takeItem(row)
+        self.zikr_list_widget.insertItem(row - 1, current_item)
+        self.zikr_list_widget.setCurrentRow(row - 1)
+        self.save_reordered_list()
+        
+    def move_zikr_down(self):
+        row = self.zikr_list_widget.currentRow()
+        if row == -1 or row >= self.zikr_list_widget.count() - 1:
+            return
+        current_item = self.zikr_list_widget.takeItem(row)
+        self.zikr_list_widget.insertItem(row + 1, current_item)
+        self.zikr_list_widget.setCurrentRow(row + 1)
+        self.save_reordered_list()
+        
+    def save_reordered_list(self):
+        azkar = []
+        for i in range(self.zikr_list_widget.count()):
+            azkar.append(self.zikr_list_widget.item(i).text())
+        self.config["azkar_list"] = azkar
+        self.save_config()
 
     def assign_mouse(self):
         d = AssignButtonDialog(is_mouse=True, parent=self)
