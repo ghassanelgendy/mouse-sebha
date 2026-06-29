@@ -8,7 +8,7 @@ from overlay_ui import SebhaOverlay
 from input_listener import InputListener
 from settings_ui import SettingsDialog
 
-APP_VERSION = "1.0.0"
+APP_VERSION = "v1.0.0"
 CONFIG_PATH = "config.json"
 
 class UpdateCheckerThread(QThread):
