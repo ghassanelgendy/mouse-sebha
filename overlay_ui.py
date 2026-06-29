@@ -340,15 +340,40 @@ class SebhaOverlay(QWidget):
             
             target_width = 500
             
-        # Restrict container width and invalidate layout to force recalculation of height-for-width
-        self.container.setFixedWidth(target_width - 30)
-        container_layout = self.container.layout()
-        container_layout.invalidate()
+        # Calculate width available for labels inside the container (accounting for container and main margins)
+        label_width = target_width - 60
         
-        if container_layout.hasHeightForWidth():
-            hint_height = container_layout.heightForWidth(target_width - 30)
-        else:
-            hint_height = container_layout.sizeHint().height()
+        # Apply the constrained width to the container and labels
+        self.container.setFixedWidth(target_width - 30)
+        self.zikr_label.setFixedWidth(label_width)
+        self.benefit_label.setFixedWidth(label_width)
+        
+        # Calculate heights of all visible elements inside self.container
+        container_content_height = 0
+        
+        # 1. zikr_label (always visible)
+        zikr_h = self.zikr_label.heightForWidth(label_width)
+        if zikr_h <= 0:
+            zikr_h = self.zikr_label.sizeHint().height()
+        container_content_height += zikr_h
+        
+        # 2. benefit_label (if visible)
+        if self.benefit_label.isVisible() and self.benefit_label.text():
+            benefit_h = self.benefit_label.heightForWidth(label_width)
+            if benefit_h <= 0:
+                benefit_h = self.benefit_label.sizeHint().height()
+            container_content_height += 10 + benefit_h
+            
+        # 3. count_label (if visible)
+        if self.count_label.isVisible() and self.count_label.text():
+            container_content_height += 10 + self.count_label.sizeHint().height()
+            
+        # 4. options_container (if visible)
+        if self.options_container.isVisible():
+            container_content_height += 10 + self.options_container.sizeHint().height()
+            
+        # Add container layout top/bottom margins (15 + 15 = 30)
+        hint_height = container_content_height + 30
         
         # Calculate target height (content height + main layout margins + safety padding for custom fonts)
         target_height = hint_height + 45
