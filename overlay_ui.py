@@ -1,11 +1,20 @@
 import os
 import json
+import sys
 from PyQt6.QtWidgets import QApplication, QWidget, QVBoxLayout, QLabel, QPushButton, QHBoxLayout, QSpacerItem, QSizePolicy
 from PyQt6.QtCore import Qt, QTimer, QPoint, QRect, QPropertyAnimation, QEasingCurve
 from PyQt6.QtGui import QColor, QPalette, QFont, QFontDatabase
 
 CONFIG_PATH = "config.json"
-DB_PATH = "db.json"
+
+def resource_path(relative_path):
+    try:
+        base_path = sys._MEIPASS
+    except Exception:
+        base_path = os.path.abspath(".")
+    return os.path.join(base_path, relative_path)
+
+DB_PATH = resource_path("db.json")
 
 class SebhaOverlay(QWidget):
     def __init__(self):
@@ -13,7 +22,7 @@ class SebhaOverlay(QWidget):
         
         # Load Arabic Font specifically for Arabic text
         self.arabic_font_family = "Segoe UI" # fallback
-        font_id = QFontDatabase.addApplicationFont("assets/font.ttf")
+        font_id = QFontDatabase.addApplicationFont(resource_path("assets/font.ttf"))
         if font_id != -1:
             self.arabic_font_family = QFontDatabase.applicationFontFamilies(font_id)[0]
             

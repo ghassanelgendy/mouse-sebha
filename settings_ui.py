@@ -421,10 +421,21 @@ class SettingsDialog(QDialog):
         startup_dir = os.path.join(os.environ['APPDATA'], r'Microsoft\Windows\Start Menu\Programs\Startup')
         shortcut_path = os.path.join(startup_dir, 'Sebha.lnk')
         if checked:
-            pythonw_exe = os.path.join(os.path.dirname(sys.executable), 'pythonw.exe')
-            script_path = os.path.abspath('main.pyw')
-            working_dir = os.path.abspath('.')
-            ps_script = f'''
+            if getattr(sys, 'frozen', False):
+                exe_path = sys.executable
+                working_dir = os.path.dirname(exe_path)
+                ps_script = f'''
+$WshShell = New-Object -comObject WScript.Shell
+$Shortcut = $WshShell.CreateShortcut("{shortcut_path}")
+$Shortcut.TargetPath = "{exe_path}"
+$Shortcut.WorkingDirectory = "{working_dir}"
+$Shortcut.Save()
+'''
+            else:
+                pythonw_exe = os.path.join(os.path.dirname(sys.executable), 'pythonw.exe')
+                script_path = os.path.abspath('main.pyw')
+                working_dir = os.path.abspath('.')
+                ps_script = f'''
 $WshShell = New-Object -comObject WScript.Shell
 $Shortcut = $WshShell.CreateShortcut("{shortcut_path}")
 $Shortcut.TargetPath = "{pythonw_exe}"

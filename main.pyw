@@ -6,15 +6,23 @@ from overlay_ui import SebhaOverlay
 from input_listener import InputListener
 from settings_ui import SettingsDialog
 
+def resource_path(relative_path):
+    import os
+    try:
+        base_path = sys._MEIPASS
+    except Exception:
+        base_path = os.path.abspath(".")
+    return os.path.join(base_path, relative_path)
+
 def main():
     app = QApplication(sys.argv)
     app.setQuitOnLastWindowClosed(False)
 
     # Load custom font (we don't apply it globally so English texts stay clean)
-    QFontDatabase.addApplicationFont("assets/font.ttf")
+    QFontDatabase.addApplicationFont(resource_path("assets/font.ttf"))
 
     # Load Logo
-    app_icon = QIcon("assets/logo.ico")
+    app_icon = QIcon(resource_path("assets/logo.ico"))
     app.setWindowIcon(app_icon)
 
     overlay = SebhaOverlay()
