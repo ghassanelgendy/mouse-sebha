@@ -340,10 +340,15 @@ class SebhaOverlay(QWidget):
             
             target_width = 500
             
-        # Temporarily restrict container width so layout computes proper height-for-width word wrap
+        # Restrict container width and invalidate layout to force recalculation of height-for-width
         self.container.setFixedWidth(target_width - 30)
-        self.container.layout().activate()
-        hint_height = self.container.layout().sizeHint().height()
+        container_layout = self.container.layout()
+        container_layout.invalidate()
+        
+        if container_layout.hasHeightForWidth():
+            hint_height = container_layout.heightForWidth(target_width - 30)
+        else:
+            hint_height = container_layout.sizeHint().height()
         
         # Calculate target height (content height + main layout margins + safety padding for custom fonts)
         target_height = hint_height + 45
