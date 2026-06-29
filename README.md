@@ -4,7 +4,7 @@
 
 </div>
 <p align="center">
-  <a href="https://github.com/ghassanelgendy/mouse-sebha/releases/latest/download/Sebha-Windows.exe">
+  <a href="https://github.com/ghassanelgendy/mouse-sebha/releases/latest/download/Sebha-Windows-Setup.exe">
     <img src="https://img.shields.io/badge/Download-Windows-blue?style=for-the-badge&logo=windows&logoColor=white" alt="Download for Windows" />
   </a>
   <a href="https://github.com/ghassanelgendy/mouse-sebha/releases/latest/download/Sebha-Linux">
