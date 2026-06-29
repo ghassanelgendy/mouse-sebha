@@ -242,6 +242,12 @@ class SettingsDialog(QDialog):
         self.startup_checkbox.toggled.connect(self.toggle_startup)
         settings_layout.addWidget(self.startup_checkbox)
         
+        # Auto Update Settings
+        self.autoupdate_checkbox = QCheckBox("Enable Automatic Updates")
+        self.autoupdate_checkbox.setChecked(self.config.get("auto_update", True))
+        self.autoupdate_checkbox.toggled.connect(self.toggle_autoupdate)
+        settings_layout.addWidget(self.autoupdate_checkbox)
+        
         settings_layout.addStretch()
         tabs.addTab(settings_tab, "Settings")
         
@@ -457,3 +463,7 @@ $Shortcut.Save()
         else:
             if os.path.exists(shortcut_path):
                 os.remove(shortcut_path)
+
+    def toggle_autoupdate(self, checked):
+        self.config["auto_update"] = checked
+        self.save_config()
