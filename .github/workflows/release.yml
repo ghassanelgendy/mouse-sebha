@@ -4,8 +4,6 @@ on:
   push:
     branches:
       - main
-    tags:
-      - 'v*'
 
 permissions:
   contents: write
@@ -17,6 +15,8 @@ jobs:
     steps:
     - name: Checkout repository
       uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
 
     - name: Set up Python
       uses: actions/setup-python@v5
@@ -30,6 +30,49 @@ jobs:
         pip install -r requirements.txt
         pip install pyinstaller
 
+    - name: Determine and Push New Tag
+      id: tag_repo
+      shell: bash
+      run: |
+        git fetch --tags
+        latest_tag=$(git tag -l "v*" | sort -V | tail -n 1)
+        if [ -z "$latest_tag" ]; then
+          new_tag="v1.0.0"
+        else
+          version_part="${latest_tag#v}"
+          IFS='.' read -r major minor patch <<< "$version_part"
+          if ! [[ "$patch" =~ ^[0-9]+$ ]]; then patch=0; fi
+          if ! [[ "$minor" =~ ^[0-9]+$ ]]; then minor=0; fi
+          if ! [[ "$major" =~ ^[0-9]+$ ]]; then major=1; fi
+          new_patch=$((patch + 1))
+          new_tag="v$major.$minor.$new_patch"
+        fi
+        echo "NEW_TAG=$new_tag" >> $GITHUB_ENV
+        echo "New tag: $new_tag"
+        
+        # Dynamically update APP_VERSION in main.pyw
+        python -c "
+import re
+with open('main.pyw', 'r', encoding='utf-8') as f:
+    content = f.read()
+content = re.sub(r'APP_VERSION\s*=\s*\"[^\"]+\"', 'APP_VERSION = \"'$new_tag'\"', content)
+with open('main.pyw', 'w', encoding='utf-8') as f:
+    f.write(content)
+"
+        
+        # Configure Git
+        git config user.name "github-actions[bot]"
+        git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+        
+        # Commit updated version back to repo
+        git add main.pyw
+        git commit -m "Bump version to $new_tag [skip ci]" || echo "No changes to commit"
+        git push origin main || echo "No changes to push"
+        
+        # Create and push tag
+        git tag $new_tag
+        git push origin $new_tag
+
     - name: Build Executable with PyInstaller
       run: |
         pyinstaller --noconsole --onefile --icon=assets/logo.ico --add-data "assets;assets" --add-data "db.json;." --name Sebha main.pyw
@@ -39,8 +82,8 @@ jobs:
       uses: softprops/action-gh-release@v2
       with:
         files: dist/Sebha.exe
-        tag_name: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || 'latest' }}
-        name: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || 'Latest Build' }}
-        prerelease: ${{ !startsWith(github.ref, 'refs/tags/') }}
+        tag_name: ${{ env.NEW_TAG }}
+        name: Release ${{ env.NEW_TAG }}
+        prerelease: false
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
