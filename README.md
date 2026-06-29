@@ -1,5 +1,8 @@
+<div align="center">
+
 # 📿 Mouse Sebha
 
+</div>
 <p align="center">
   <a href="https://github.com/ghassanelgendy/mouse-sebha/releases/latest/download/Sebha-Windows.exe">
     <img src="https://img.shields.io/badge/Download-Windows-blue?style=for-the-badge&logo=windows&logoColor=white" alt="Download for Windows" />
