@@ -297,7 +297,14 @@ class SebhaOverlay(QWidget):
             self.exit_btn.setVisible(False)
             self.next_btn.setVisible(True)
             
-            target_width = 350 if is_hovered else 250
+            base_width = 350 if is_hovered else 250
+            zikr_len = len(self.zikr)
+            if zikr_len > 100:
+                target_width = base_width + 120
+            elif zikr_len > 50:
+                target_width = base_width + 70
+            else:
+                target_width = base_width
         else:
             session_data = self.db.get(self.mode.lower(), [])
             if self.session_index < len(session_data):
@@ -338,7 +345,14 @@ class SebhaOverlay(QWidget):
             self.exit_btn.setVisible(True)
             self.next_btn.setVisible(True)
             
-            target_width = 500
+            base_width = 500
+            text_len = len(text)
+            if text_len > 250:
+                target_width = base_width + 150
+            elif text_len > 150:
+                target_width = base_width + 80
+            else:
+                target_width = base_width
             
         # Calculate width available for labels inside the container (accounting for container and main margins)
         label_width = target_width - 60
