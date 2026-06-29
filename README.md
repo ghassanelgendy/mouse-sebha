@@ -38,7 +38,7 @@ pip install -r requirements.txt
 ### 2. Run the Application
 Start the background process:
 ```bash
-pythonw main.py
+pythonw main.pyw
 ```
 *(Using `pythonw` runs it as a background task, keeping your command prompt free and avoiding a command window popup).*
 

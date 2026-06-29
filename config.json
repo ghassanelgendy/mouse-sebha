@@ -1,6 +1,6 @@
 {
-    "count": 20,
-    "zikr": "لا حول ولا قوة إلا بالله",
+    "count": 7,
+    "zikr": "سبحان الله",
     "azkar_list": [
         "سبحان الله",
         "الحمد لله",
@@ -10,10 +10,10 @@
         "أستغفر الله"
     ],
     "trigger_mouse": "Button.x2",
-    "trigger_keyboard": "f",
+    "trigger_keyboard": "Key.ctrl_r",
     "stats": {
-        "total_free_clicks": 26,
-        "morning_sessions_completed": 0,
-        "night_sessions_completed": 0
+        "total_free_clicks": 775,
+        "morning_sessions_completed": 1,
+        "night_sessions_completed": 1
     }
 }

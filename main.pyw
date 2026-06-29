@@ -11,10 +11,10 @@ def main():
     app.setQuitOnLastWindowClosed(False)
 
     # Load custom font (we don't apply it globally so English texts stay clean)
-    QFontDatabase.addApplicationFont("font.ttf")
+    QFontDatabase.addApplicationFont("assets/font.ttf")
 
     # Load Logo
-    app_icon = QIcon("logo.ico")
+    app_icon = QIcon("assets/logo.ico")
     app.setWindowIcon(app_icon)
 
     overlay = SebhaOverlay()

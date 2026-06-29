@@ -1,7 +1,7 @@
 import os
 import json
 from PyQt6.QtWidgets import QApplication, QWidget, QVBoxLayout, QLabel, QPushButton, QHBoxLayout, QSpacerItem, QSizePolicy
-from PyQt6.QtCore import Qt, QTimer, QPoint
+from PyQt6.QtCore import Qt, QTimer, QPoint, QRect, QPropertyAnimation, QEasingCurve
 from PyQt6.QtGui import QColor, QPalette, QFont, QFontDatabase
 
 CONFIG_PATH = "config.json"
@@ -13,7 +13,7 @@ class SebhaOverlay(QWidget):
         
         # Load Arabic Font specifically for Arabic text
         self.arabic_font_family = "Segoe UI" # fallback
-        font_id = QFontDatabase.addApplicationFont("font.ttf")
+        font_id = QFontDatabase.addApplicationFont("assets/font.ttf")
         if font_id != -1:
             self.arabic_font_family = QFontDatabase.applicationFontFamilies(font_id)[0]
             
@@ -38,11 +38,19 @@ class SebhaOverlay(QWidget):
         if self.zikr in self.azkar_list:
             self.zikr_index = self.azkar_list.index(self.zikr)
 
+        # Setup persistent geometry animation to avoid instantiation lag on hover
+        self.anim = QPropertyAnimation(self, b"geometry")
+        self.anim.setDuration(250)
+        self.anim.setEasingCurve(QEasingCurve.Type.OutQuad)
+
         self.initUI()
         
         self.hide_timer = QTimer(self)
         self.hide_timer.timeout.connect(self.hide_overlay)
         self.hide_timer.setInterval(5000)
+
+        # Warm up styles, layouts, and fonts to prevent lag on first hover
+        self.warm_up()
 
     def load_config(self):
         if os.path.exists(CONFIG_PATH):
@@ -228,8 +236,15 @@ class SebhaOverlay(QWidget):
         pos = self.mapFromGlobal(self.cursor().pos())
         return self.rect().contains(pos)
 
-    def update_ui_state(self):
-        is_hovered = self.is_cursor_inside()
+    def warm_up(self):
+        # Force compilation of styles, layout generation, and font rasterization for both states
+        self.options_container.setVisible(True)
+        self.update_ui_state(force_hovered=True)
+        self.options_container.setVisible(False)
+        self.update_ui_state(force_hovered=False)
+
+    def update_ui_state(self, force_hovered=None):
+        is_hovered = force_hovered if force_hovered is not None else self.is_cursor_inside()
         
         if self.mode == 'FREE':
             if self.zikr_label.text() != self.zikr:
@@ -314,15 +329,12 @@ class SebhaOverlay(QWidget):
         x = screen.width() - target_width - 30
         y = screen.height() - target_height - 40
         
-        from PyQt6.QtCore import QRect, QPropertyAnimation, QEasingCurve
         target_rect = QRect(x, y, target_width, target_height)
         
         if self.isVisible() and self.geometry() != target_rect:
-            self.anim = QPropertyAnimation(self, b"geometry")
-            self.anim.setDuration(250)
+            self.anim.stop()
             self.anim.setStartValue(self.geometry())
             self.anim.setEndValue(target_rect)
-            self.anim.setEasingCurve(QEasingCurve.Type.OutQuad)
             self.anim.start()
         else:
             self.setGeometry(target_rect)

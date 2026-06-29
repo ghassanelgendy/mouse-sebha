@@ -7,7 +7,7 @@ def create_startup_shortcut():
     shortcut_path = os.path.join(startup_dir, 'Sebha.lnk')
     
     pythonw_exe = os.path.join(os.path.dirname(sys.executable), 'pythonw.exe')
-    script_path = os.path.abspath('main.py')
+    script_path = os.path.abspath('main.pyw')
     working_dir = os.path.abspath('.')
 
     ps_script = f'''
