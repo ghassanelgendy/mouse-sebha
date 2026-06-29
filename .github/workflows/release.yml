@@ -40,15 +40,16 @@ jobs:
         echo "new_tag=$new_tag" >> $GITHUB_OUTPUT
         echo "New tag: $new_tag"
         
-        # Dynamically update APP_VERSION in main.pyw
+        # Dynamically update APP_VERSION in main.pyw and installer.iss
         python -c "import re; f=open('main.pyw','r',encoding='utf-8'); c=f.read(); f.close(); c=re.sub(r'APP_VERSION\s*=\s*\"[^\"]+\"', 'APP_VERSION = \"$new_tag\"', c); f=open('main.pyw','w',encoding='utf-8'); f.write(c); f.close()"
+        python -c "import re; f=open('installer.iss','r',encoding='utf-8'); c=f.read(); f.close(); c=re.sub(r'#define AppVersion\s*\"[^\"]+\"', '#define AppVersion \"$new_tag\"', c); f=open('installer.iss','w',encoding='utf-8'); f.write(c); f.close()"
         
         # Configure Git
         git config user.name "github-actions[bot]"
         git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
         
         # Commit updated version back to repo
-        git add main.pyw
+        git add main.pyw installer.iss
         git commit -m "Bump version to $new_tag [skip ci]" || echo "No changes to commit"
         git push origin main || echo "No changes to push"
         
@@ -107,11 +108,20 @@ jobs:
       run: |
         pyinstaller --noconsole --onefile --icon=assets/logo.ico --add-data "assets${{ matrix.separator }}assets" --add-data "db.json${{ matrix.separator }}." --name ${{ matrix.artifact_name }} main.pyw
 
+    - name: Compile Inno Setup Installer (Windows only)
+      if: matrix.os == 'windows-latest'
+      shell: cmd
+      run: |
+        "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" /Odist installer.iss
+
     - name: Create / Update Release
       id: create_release
       uses: softprops/action-gh-release@v2
       with:
-        files: dist/${{ matrix.artifact_name }}
+        files: |
+          dist/${{ matrix.artifact_name }}
+          dist/Sebha-Windows-Setup.exe
+        fail_on_unmatched_files: false
         tag_name: ${{ needs.tag.outputs.new_tag }}
         name: Release ${{ needs.tag.outputs.new_tag }}
         prerelease: false

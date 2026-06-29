@@ -4,8 +4,8 @@ import os
 import subprocess
 from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel, 
                              QPushButton, QTabWidget, QWidget, QCheckBox,
-                             QListWidget, QLineEdit, QMessageBox)
-from PyQt6.QtCore import Qt, pyqtSignal, QRect
+                             QListWidget, QLineEdit, QMessageBox, QApplication)
+from PyQt6.QtCore import Qt, pyqtSignal, QRect, QThread
 from PyQt6.QtGui import QPainter, QColor, QFont
 from pynput import mouse, keyboard
 
@@ -69,6 +69,106 @@ class AssignButtonDialog(QDialog):
             event.accept()
         else:
             super().keyPressEvent(event)
+
+class UpdateCheckerThread(QThread):
+    update_downloaded = pyqtSignal(str)
+    no_update_found = pyqtSignal()
+    check_failed = pyqtSignal(str)
+
+    def __init__(self, current_version):
+        super().__init__()
+        self.current_version = current_version
+
+    def run(self):
+        try:
+            import urllib.request
+            import platform
+            url = "https://api.github.com/repos/ghassanelgendy/mouse-sebha/releases/latest"
+            req = urllib.request.Request(
+                url, 
+                headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
+            )
+            with urllib.request.urlopen(req) as response:
+                data = json.loads(response.read().decode('utf-8'))
+                
+            latest_version = data.get("tag_name", "").strip("v")
+            current = self.current_version.strip("v")
+            
+            if latest_version and latest_version != current:
+                assets = data.get("assets", [])
+                
+                system_name = platform.system()
+                if system_name == "Windows":
+                    expected_asset_name = "Sebha-Windows.exe"
+                elif system_name == "Linux":
+                    expected_asset_name = "Sebha-Linux"
+                elif system_name == "Darwin":
+                    expected_asset_name = "Sebha-macOS"
+                else:
+                    expected_asset_name = None
+                    
+                if expected_asset_name:
+                    download_url = None
+                    for asset in assets:
+                        if asset.get("name") == expected_asset_name:
+                            download_url = asset.get("browser_download_url")
+                            break
+                            
+                    if download_url:
+                        import tempfile
+                        temp_dir = tempfile.gettempdir()
+                        new_file_name = "Sebha.new.exe" if system_name == "Windows" else "Sebha.new"
+                        new_exe_path = os.path.join(temp_dir, new_file_name)
+                        
+                        urllib.request.urlretrieve(download_url, new_exe_path)
+                        
+                        if os.path.exists(new_exe_path) and os.path.getsize(new_exe_path) > 1000000:
+                            self.update_downloaded.emit(new_exe_path)
+                        else:
+                            self.check_failed.emit("Downloaded file is empty or too small.")
+                    else:
+                        self.check_failed.emit(f"Could not find asset {expected_asset_name} in release.")
+                else:
+                    self.check_failed.emit(f"Unsupported operating system: {system_name}")
+            else:
+                self.no_update_found.emit()
+        except Exception as e:
+            self.check_failed.emit(str(e))
+
+def apply_update_and_restart(new_exe_path):
+    import subprocess
+    import platform
+    import sys
+    
+    current_exe = sys.executable
+    current_pid = os.getpid()
+    system_name = platform.system()
+    
+    if system_name == "Windows":
+        ps_script = f'''
+$proc = Get-Process -Id {current_pid} -ErrorAction SilentlyContinue
+if ($proc) {{
+    $proc.WaitForExit(5000)
+}}
+Remove-Item -Force "{current_exe}" -ErrorAction SilentlyContinue
+Move-Item -Force "{new_exe_path}" "{current_exe}"
+Start-Process "{current_exe}"
+'''
+        subprocess.Popen(
+            ["powershell", "-WindowStyle", "Hidden", "-Command", ps_script],
+            creationflags=subprocess.CREATE_NO_WINDOW
+        )
+    else:
+        sh_script = f'''
+sleep 2
+rm -f "{current_exe}"
+mv "{new_exe_path}" "{current_exe}"
+chmod +x "{current_exe}"
+"{current_exe}" &
+'''
+        subprocess.Popen(["sh", "-c", sh_script])
+        
+    QApplication.quit()
 
 class WeeklyBarChart(QWidget):
     def __init__(self, history, parent=None):
@@ -176,8 +276,9 @@ def calculate_streak(history):
 class SettingsDialog(QDialog):
     config_updated = pyqtSignal()
     
-    def __init__(self, parent=None):
+    def __init__(self, current_version="1.0.0", parent=None):
         super().__init__(parent)
+        self.current_version = current_version
         self.setWindowTitle("Sebha Settings")
         self.setFixedSize(450, 400)
         
@@ -247,6 +348,11 @@ class SettingsDialog(QDialog):
         self.autoupdate_checkbox.setChecked(self.config.get("auto_update", True))
         self.autoupdate_checkbox.toggled.connect(self.toggle_autoupdate)
         settings_layout.addWidget(self.autoupdate_checkbox)
+        
+        # Check for Updates Button
+        self.update_btn = QPushButton("Check for Updates")
+        self.update_btn.clicked.connect(self.manual_update_check)
+        settings_layout.addWidget(self.update_btn)
         
         settings_layout.addStretch()
         tabs.addTab(settings_tab, "Settings")
@@ -470,3 +576,46 @@ $Shortcut.Save()
     def toggle_autoupdate(self, checked):
         self.config["auto_update"] = checked
         self.save_config()
+
+    def manual_update_check(self):
+        self.update_btn.setEnabled(False)
+        self.update_btn.setText("Checking...")
+        
+        self.manual_updater = UpdateCheckerThread(self.current_version)
+        
+        def on_downloaded(new_exe_path):
+            self.update_btn.setEnabled(True)
+            self.update_btn.setText("Check for Updates")
+            msg = QMessageBox(self)
+            msg.setWindowTitle("Update Available")
+            msg.setText("A new update has been downloaded successfully!")
+            msg.setInformativeText("The application will restart to apply the update.")
+            msg.setIcon(QMessageBox.Icon.Information)
+            msg.setStandardButtons(QMessageBox.StandardButton.Ok)
+            msg.exec()
+            apply_update_and_restart(new_exe_path)
+            
+        def on_no_update():
+            self.update_btn.setEnabled(True)
+            self.update_btn.setText("Check for Updates")
+            msg = QMessageBox(self)
+            msg.setWindowTitle("Up to Date")
+            msg.setText("You are running the latest version!")
+            msg.setIcon(QMessageBox.Icon.Information)
+            msg.setStandardButtons(QMessageBox.StandardButton.Ok)
+            msg.exec()
+            
+        def on_failed(err_msg):
+            self.update_btn.setEnabled(True)
+            self.update_btn.setText("Check for Updates")
+            msg = QMessageBox(self)
+            msg.setWindowTitle("Check Failed")
+            msg.setText(f"Failed to check for updates:\n{err_msg}")
+            msg.setIcon(QMessageBox.Icon.Warning)
+            msg.setStandardButtons(QMessageBox.StandardButton.Ok)
+            msg.exec()
+            
+        self.manual_updater.update_downloaded.connect(on_downloaded)
+        self.manual_updater.no_update_found.connect(on_no_update)
+        self.manual_updater.check_failed.connect(on_failed)
+        self.manual_updater.start()
