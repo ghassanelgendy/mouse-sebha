@@ -206,13 +206,13 @@ class SebhaOverlay(QWidget):
         self.back_btn.setFont(self.get_english_font(12, True))
         self.back_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.back_btn.setStyleSheet(self.btn_style)
-        self.back_btn.clicked.connect(self.prev_zikr)
+        self.back_btn.clicked.connect(self.next_zikr) # Left button moves forward (next)
 
         self.next_btn = QPushButton("▶")
         self.next_btn.setFont(self.get_english_font(12, True))
         self.next_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.next_btn.setStyleSheet(self.btn_style)
-        self.next_btn.clicked.connect(self.next_zikr)
+        self.next_btn.clicked.connect(self.prev_zikr) # Right button moves backward (prev)
 
         options_layout.addWidget(self.back_btn)
         options_layout.addWidget(self.morning_btn)
