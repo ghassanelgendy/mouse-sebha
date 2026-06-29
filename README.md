@@ -73,7 +73,7 @@ pythonw main.pyw
 
 ---
 
-# 🇬🇧 English Version (النسخة الإنجليزية)
+# English Version 
 
 A lightweight, beautiful, and unobtrusive background application for Windows, Linux, and macOS that functions as a smart Sebha and Athkar companion.
 Designed to stay completely out of your way as a background process (no taskbar clutter), it overlays a modern, glassy, and semi-transparent counter in the bottom-right corner of your screen that responds to mouse and keyboard hotkeys.
