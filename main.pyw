@@ -8,13 +8,8 @@ from overlay_ui import SebhaOverlay
 from input_listener import InputListener
 from settings_ui import SettingsDialog
 
-<<<<<<< Updated upstream
-APP_VERSION = "v1.0.6"
-CONFIG_PATH = "config.json"
-=======
 APP_VERSION = "v1.0.6"
 from config_path import CONFIG_PATH
->>>>>>> Stashed changes
 
 class UpdateCheckerThread(QThread):
     update_downloaded = pyqtSignal(str)
