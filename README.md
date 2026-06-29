@@ -2,13 +2,13 @@
 
 <p align="center">
   <a href="https://github.com/ghassanelgendy/mouse-sebha/releases/latest/download/Sebha-Windows.exe">
-    <img src="https://img.shields.io/badge/تحميل-Windows-blue?style=for-the-badge&logo=windows&logoColor=white" alt="تحميل لنظام ويندوز" />
+    <img src="https://img.shields.io/badge/Download-Windows-blue?style=for-the-badge&logo=windows&logoColor=white" alt="Download for Windows" />
   </a>
   <a href="https://github.com/ghassanelgendy/mouse-sebha/releases/latest/download/Sebha-Linux">
-    <img src="https://img.shields.io/badge/تحميل-Linux-orange?style=for-the-badge&logo=linux&logoColor=white" alt="تحميل لنظام لينكس" />
+    <img src="https://img.shields.io/badge/Download-Linux-orange?style=for-the-badge&logo=linux&logoColor=white" alt="Download for Linux" />
   </a>
   <a href="https://github.com/ghassanelgendy/mouse-sebha/releases/latest/download/Sebha-macOS">
-    <img src="https://img.shields.io/badge/تحميل-macOS-black?style=for-the-badge&logo=apple&logoColor=white" alt="تحميل لنظام ماك" />
+    <img src="https://img.shields.io/badge/Download-macOS-black?style=for-the-badge&logo=apple&logoColor=white" alt="Download for macOS" />
   </a>
 </p>
 
