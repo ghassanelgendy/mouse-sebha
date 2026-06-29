@@ -8,7 +8,7 @@ from overlay_ui import SebhaOverlay
 from input_listener import InputListener
 from settings_ui import SettingsDialog
 
-APP_VERSION = "v1.0.7"
+APP_VERSION = "v1.0.8"
 from config_path import CONFIG_PATH
 
 class UpdateCheckerThread(QThread):
