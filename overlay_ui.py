@@ -460,7 +460,7 @@ class SebhaOverlay(QWidget):
 
     def show_overlay(self):
         self.hide_timer.start()
-        if self.fade_anim.state() == QPropertyAnimation.State.Running and self.fade_anim.direction() == QPropertyAnimation.Direction.Forward:
+        if self.fade_anim.state() == QPropertyAnimation.State.Running and self.fade_anim.endValue() == 1.0:
             return
         if not self.isVisible():
             self.opacity_effect.setOpacity(0.0)
@@ -468,17 +468,15 @@ class SebhaOverlay(QWidget):
         self.fade_anim.stop()
         self.fade_anim.setStartValue(self.opacity_effect.opacity())
         self.fade_anim.setEndValue(1.0)
-        self.fade_anim.setDirection(QPropertyAnimation.Direction.Forward)
         self.fade_anim.start()
         
     def hide_overlay(self):
         if not self.is_cursor_inside():
-            if self.fade_anim.state() == QPropertyAnimation.State.Running and self.fade_anim.direction() == QPropertyAnimation.Direction.Backward:
+            if self.fade_anim.state() == QPropertyAnimation.State.Running and self.fade_anim.endValue() == 0.0:
                 return
             self.fade_anim.stop()
             self.fade_anim.setStartValue(self.opacity_effect.opacity())
             self.fade_anim.setEndValue(0.0)
-            self.fade_anim.setDirection(QPropertyAnimation.Direction.Backward)
             self.fade_anim.start()
 
     def enterEvent(self, event):
