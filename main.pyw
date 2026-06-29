@@ -9,10 +9,10 @@ from input_listener import InputListener
 from settings_ui import SettingsDialog
 
 <<<<<<< Updated upstream
-APP_VERSION = "v1.0.4"
+APP_VERSION = "v1.0.5"
 CONFIG_PATH = "config.json"
 =======
-APP_VERSION = "v1.0.3"
+APP_VERSION = "v1.0.5"
 from config_path import CONFIG_PATH
 >>>>>>> Stashed changes
 
