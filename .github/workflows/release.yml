@@ -9,26 +9,15 @@ permissions:
   contents: write
 
 jobs:
-  build:
-    runs-on: windows-latest
-
+  tag:
+    runs-on: ubuntu-latest
+    outputs:
+      new_tag: ${{ steps.tag_repo.outputs.new_tag }}
     steps:
     - name: Checkout repository
       uses: actions/checkout@v4
       with:
         fetch-depth: 0
-
-    - name: Set up Python
-      uses: actions/setup-python@v5
-      with:
-        python-version: '3.11'
-        cache: 'pip'
-
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install -r requirements.txt
-        pip install pyinstaller
 
     - name: Determine and Push New Tag
       id: tag_repo
@@ -48,17 +37,11 @@ jobs:
           new_tag="v$major.$minor.$new_patch"
         fi
         echo "NEW_TAG=$new_tag" >> $GITHUB_ENV
+        echo "new_tag=$new_tag" >> $GITHUB_OUTPUT
         echo "New tag: $new_tag"
         
         # Dynamically update APP_VERSION in main.pyw
-        python -c "
-import re
-with open('main.pyw', 'r', encoding='utf-8') as f:
-    content = f.read()
-content = re.sub(r'APP_VERSION\s*=\s*\"[^\"]+\"', 'APP_VERSION = \"'$new_tag'\"', content)
-with open('main.pyw', 'w', encoding='utf-8') as f:
-    f.write(content)
-"
+        python -c "import re; f=open('main.pyw','r',encoding='utf-8'); c=f.read(); f.close(); c=re.sub(r'APP_VERSION\s*=\s*\"[^\"]+\"', 'APP_VERSION = \"$new_tag\"', c); f=open('main.pyw','w',encoding='utf-8'); f.write(c); f.close()"
         
         # Configure Git
         git config user.name "github-actions[bot]"
@@ -73,17 +56,55 @@ with open('main.pyw', 'w', encoding='utf-8') as f:
         git tag $new_tag
         git push origin $new_tag
 
-    - name: Build Executable with PyInstaller
-      run: |
-        pyinstaller --noconsole --onefile --icon=assets/logo.ico --add-data "assets;assets" --add-data "db.json;." --name Sebha main.pyw
+  build:
+    needs: tag
+    strategy:
+      matrix:
+        include:
+          - os: windows-latest
+            os-name: Windows
+            artifact_name: Sebha-Windows.exe
+            separator: ";"
+          - os: ubuntu-latest
+            os-name: Linux
+            artifact_name: Sebha-Linux
+            separator: ":"
+          - os: macos-latest
+            os-name: macOS
+            artifact_name: Sebha-macOS
+            separator: ":"
+    runs-on: ${{ matrix.os }}
 
-    - name: Create Release
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        ref: ${{ needs.tag.outputs.new_tag }}
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+        cache: 'pip'
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install pyinstaller
+
+    - name: Build Executable with PyInstaller
+      shell: bash
+      run: |
+        pyinstaller --noconsole --onefile --icon=assets/logo.ico --add-data "assets${{ matrix.separator }}assets" --add-data "db.json${{ matrix.separator }}." --name ${{ matrix.artifact_name }} main.pyw
+
+    - name: Create / Update Release
       id: create_release
       uses: softprops/action-gh-release@v2
       with:
-        files: dist/Sebha.exe
-        tag_name: ${{ env.NEW_TAG }}
-        name: Release ${{ env.NEW_TAG }}
+        files: dist/${{ matrix.artifact_name }}
+        tag_name: ${{ needs.tag.outputs.new_tag }}
+        name: Release ${{ needs.tag.outputs.new_tag }}
         prerelease: false
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
