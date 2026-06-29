@@ -5,7 +5,7 @@ from PyQt6.QtWidgets import QApplication, QWidget, QVBoxLayout, QLabel, QPushBut
 from PyQt6.QtCore import Qt, QTimer, QPoint, QRect, QPropertyAnimation, QEasingCurve
 from PyQt6.QtGui import QColor, QPalette, QFont, QFontDatabase
 
-CONFIG_PATH = "config.json"
+from config_path import CONFIG_PATH
 
 def resource_path(relative_path):
     try:

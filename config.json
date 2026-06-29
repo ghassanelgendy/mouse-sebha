@@ -1,19 +1,27 @@
 {
-    "count": 7,
-    "zikr": "سبحان الله",
+    "count": 21,
+    "zikr": "لا اله الا الله وحده لا شريك له له الملك وله الحمد وهو على كل شيء قدير",
     "azkar_list": [
         "سبحان الله",
         "الحمد لله",
         "لا إله إلا الله",
         "الله أكبر",
         "لا حول ولا قوة إلا بالله",
-        "أستغفر الله"
+        "أستغفر الله",
+        "لا اله الا الله وحده لا شريك له له الملك وله الحمد وهو على كل شيء قدير"
     ],
-    "trigger_mouse": "Button.x2",
+    "trigger_mouse": "",
     "trigger_keyboard": "Key.ctrl_r",
     "stats": {
-        "total_free_clicks": 775,
+        "total_free_clicks": 789,
         "morning_sessions_completed": 1,
-        "night_sessions_completed": 1
+        "night_sessions_completed": 1,
+        "history": {
+            "2026-06-29": {
+                "free_clicks": 14,
+                "morning_sessions": 0,
+                "night_sessions": 0
+            }
+        }
     }
 }

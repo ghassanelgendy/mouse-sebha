@@ -3,7 +3,7 @@ from pynput import mouse, keyboard
 import json
 import os
 
-CONFIG_PATH = "config.json"
+from config_path import CONFIG_PATH
 
 class InputSignals(QObject):
     triggered = pyqtSignal()

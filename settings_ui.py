@@ -9,7 +9,7 @@ from PyQt6.QtCore import Qt, pyqtSignal, QRect
 from PyQt6.QtGui import QPainter, QColor, QFont
 from pynput import mouse, keyboard
 
-CONFIG_PATH = "config.json"
+from config_path import CONFIG_PATH
 
 class AssignButtonDialog(QDialog):
     finished_signal = pyqtSignal(str)
@@ -459,7 +459,10 @@ $Shortcut.Arguments = '"{script_path}"'
 $Shortcut.WorkingDirectory = "{working_dir}"
 $Shortcut.Save()
 '''
-            subprocess.run(["powershell", "-Command", ps_script])
+            subprocess.Popen(
+                ["powershell", "-WindowStyle", "Hidden", "-Command", ps_script],
+                creationflags=subprocess.CREATE_NO_WINDOW
+            )
         else:
             if os.path.exists(shortcut_path):
                 os.remove(shortcut_path)
