@@ -165,12 +165,15 @@ class SebhaOverlay(QWidget):
         
         container_layout = QVBoxLayout(self.container)
         container_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        container_layout.setContentsMargins(15, 15, 15, 15)
+        container_layout.setSpacing(10)
 
         self.zikr_label = QLabel(self.zikr)
         self.zikr_label.setFont(self.get_arabic_font(18, True)) # Slightly larger for Arabic
         self.zikr_label.setStyleSheet("color: white;")
         self.zikr_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.zikr_label.setWordWrap(True)
+        self.zikr_label.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Minimum)
         
         self.benefit_label = QLabel("")
         self.benefit_label.setFont(self.get_arabic_font(14, False))
@@ -178,6 +181,7 @@ class SebhaOverlay(QWidget):
         self.benefit_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.benefit_label.setWordWrap(True)
         self.benefit_label.setVisible(False)
+        self.benefit_label.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Minimum)
         
         self.count_label = QLabel(str(self.count))
         self.count_label.setFont(self.get_english_font(20, True)) # Use English/Numbers font
@@ -341,8 +345,8 @@ class SebhaOverlay(QWidget):
         self.container.layout().activate()
         hint_height = self.container.layout().sizeHint().height()
         
-        # Calculate target height (content height + main layout margins)
-        target_height = hint_height + 30
+        # Calculate target height (content height + main layout margins + safety padding for custom fonts)
+        target_height = hint_height + 45
         
         # Enforce minimum heights for visual consistency
         if self.mode == 'FREE':
