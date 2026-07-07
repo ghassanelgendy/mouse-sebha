@@ -11,20 +11,40 @@ def resource_path(relative_path):
     try:
         base_path = sys._MEIPASS
     except Exception:
-        base_path = os.path.abspath(".")
+        base_path = os.path.dirname(os.path.abspath(__file__))
     return os.path.join(base_path, relative_path)
 
 DB_PATH = resource_path("db.json")
+
+class HoverAreaWidget(QWidget):
+    def paintEvent(self, event):
+        from PyQt6.QtGui import QPainter, QColor
+        painter = QPainter(self)
+        # Draw completely transparent but hit-test opaque color (1/255 alpha)
+        # Using native painting ensures it composites perfectly and remains 100% transparent
+        painter.fillRect(self.rect(), QColor(0, 0, 0, 1))
 
 class SebhaOverlay(QWidget):
     def __init__(self):
         super().__init__()
         
-        # Load Arabic Font specifically for Arabic text
-        self.arabic_font_family = "Segoe UI" # fallback
-        font_id = QFontDatabase.addApplicationFont(resource_path("assets/font.ttf"))
-        if font_id != -1:
-            self.arabic_font_family = QFontDatabase.applicationFontFamilies(font_id)[0]
+        # Ensure fonts directory exists and download/migrate fonts
+        self.ensure_fonts_dir_setup()
+        
+        # Load all fonts in assets/fonts/
+        self.loaded_font_families = []
+        fonts_dir = resource_path("assets/fonts")
+        if os.path.exists(fonts_dir):
+            for filename in os.listdir(fonts_dir):
+                if filename.lower().endswith((".ttf", ".otf")):
+                    path = os.path.join(fonts_dir, filename)
+                    font_id = QFontDatabase.addApplicationFont(path)
+                    if font_id != -1:
+                        families = QFontDatabase.applicationFontFamilies(font_id)
+                        if families:
+                            self.loaded_font_families.append(families[0])
+                            
+        self.font_family = ""
             
         self.count = 0
         self.zikr = "سبحان الله"
@@ -63,8 +83,60 @@ class SebhaOverlay(QWidget):
         self.hide_timer.timeout.connect(self.hide_overlay)
         self.hide_timer.setInterval(5000)
 
+        self.hover_timer = QTimer(self)
+        self.hover_timer.setInterval(100)
+        self.hover_timer.timeout.connect(self.check_hover_zones)
+
         # Warm up styles, layouts, and fonts to prevent lag on first hover
         self.warm_up()
+
+    def ensure_fonts_dir_setup(self):
+        fonts_dir = resource_path("assets/fonts")
+        os.makedirs(fonts_dir, exist_ok=True)
+        
+        # Migrate font.ttf if it exists in assets/
+        old_font_path = resource_path("assets/font.ttf")
+        new_font_path = os.path.join(fonts_dir, "font.ttf")
+        if os.path.exists(old_font_path) and not os.path.exists(new_font_path):
+            try:
+                import shutil
+                shutil.move(old_font_path, new_font_path)
+                print("Migrated default font to assets/fonts/")
+            except Exception as e:
+                print("Failed to move default font:", e)
+                
+        # Migrate cairo.ttf if it exists in assets/
+        old_cairo_path = resource_path("assets/cairo.ttf")
+        new_cairo_path = os.path.join(fonts_dir, "cairo.ttf")
+        if os.path.exists(old_cairo_path) and not os.path.exists(new_cairo_path):
+            try:
+                import shutil
+                shutil.move(old_cairo_path, new_cairo_path)
+                print("Migrated Cairo font to assets/fonts/")
+            except Exception as e:
+                print("Failed to move Cairo font:", e)
+                
+        # If cairo.ttf is missing, download it to assets/fonts/cairo.ttf
+        if not os.path.exists(new_cairo_path):
+            self.download_cairo_font()
+
+    def download_cairo_font(self):
+        fonts_dir = resource_path("assets/fonts")
+        os.makedirs(fonts_dir, exist_ok=True)
+        cairo_path = os.path.join(fonts_dir, "cairo.ttf")
+        if not os.path.exists(cairo_path):
+            import urllib.request
+            try:
+                url = "https://raw.githubusercontent.com/google/fonts/main/ofl/cairo/Cairo%5Bslnt%2Cwght%5D.ttf"
+                req = urllib.request.Request(
+                    url, 
+                    headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
+                )
+                with urllib.request.urlopen(req) as response, open(cairo_path, 'wb') as out_file:
+                    out_file.write(response.read())
+                print("Downloaded Cairo font successfully.")
+            except Exception as e:
+                print("Failed to download Cairo font:", e)
 
     def load_config(self):
         if os.path.exists(CONFIG_PATH):
@@ -74,6 +146,7 @@ class SebhaOverlay(QWidget):
                     self.count = data.get("count", 0)
                     self.zikr = data.get("zikr", "سبحان الله")
                     self.azkar_list = data.get("azkar_list", ["سبحان الله"])
+                    self.font_family = data.get("font_family", "Default")
                     if "stats" in data:
                         self.stats = data["stats"]
                         
@@ -87,6 +160,8 @@ class SebhaOverlay(QWidget):
                             self.zikr_index = 0
                     else:
                         self.zikr_index = self.azkar_list.index(self.zikr)
+                if hasattr(self, "zikr_label"):
+                    self.update_ui_state()
             except Exception as e:
                 print("Error loading config:", e)
 
@@ -113,14 +188,23 @@ class SebhaOverlay(QWidget):
                     "count": self.count,
                     "zikr": self.zikr,
                     "azkar_list": self.azkar_list,
+                    "font_family": self.font_family,
                     "stats": self.stats
                 })
                 json.dump(current_data, f, ensure_ascii=False, indent=4)
         except Exception as e:
             print("Error saving config:", e)
 
+    def get_current_arabic_font_family(self):
+        if hasattr(self, 'font_family') and self.font_family:
+            if self.font_family in self.loaded_font_families:
+                return self.font_family
+        if hasattr(self, 'loaded_font_families') and self.loaded_font_families:
+            return self.loaded_font_families[0]
+        return "Segoe UI"
+
     def get_arabic_font(self, size, bold=False):
-        font = QFont(self.arabic_font_family, size)
+        font = QFont(self.get_current_arabic_font_family(), size)
         font.setBold(bold)
         return font
         
@@ -149,6 +233,46 @@ class SebhaOverlay(QWidget):
 
         self.main_layout = QVBoxLayout(self)
         self.main_layout.setContentsMargins(15, 15, 15, 15)
+        self.main_layout.setSpacing(10)
+
+        # Upper widget for options
+        self.upper_widget = HoverAreaWidget(self)
+        self.upper_widget.setFixedHeight(40)
+        upper_layout = QHBoxLayout(self.upper_widget)
+        upper_layout.setContentsMargins(0, 0, 0, 0)
+        upper_layout.setSpacing(0)
+        upper_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        
+        self.trigger_circle = QPushButton("⚙️", self.upper_widget)
+        self.trigger_circle.setFont(self.get_english_font(12))
+        self.trigger_circle.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.trigger_circle.setStyleSheet("""
+            QPushButton {
+                background-color: rgba(30, 30, 30, 180);
+                color: white;
+                border-radius: 17px;
+                min-width: 34px;
+                max-width: 34px;
+                min-height: 34px;
+                max-height: 34px;
+                padding: 0px;
+                border: 1px solid rgba(255, 255, 255, 30);
+            }
+            QPushButton:hover {
+                background-color: rgba(255, 255, 255, 40);
+                border: 1px solid rgba(255, 255, 255, 60);
+            }
+        """)
+        upper_layout.addWidget(self.trigger_circle)
+        
+        self.options_container = QWidget(self.upper_widget)
+        options_layout = QHBoxLayout(self.options_container)
+        options_layout.setContentsMargins(0, 0, 0, 0)
+        options_layout.setSpacing(8)
+        options_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        upper_layout.addWidget(self.options_container)
+
+        self.main_layout.addWidget(self.upper_widget)
 
         self.container = QWidget(self)
         self.container.setObjectName("glassyContainer")
@@ -187,12 +311,6 @@ class SebhaOverlay(QWidget):
         self.count_label.setFont(self.get_english_font(20, True)) # Use English/Numbers font
         self.count_label.setStyleSheet("color: #4CAF50;")
         self.count_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-
-        self.options_container = QWidget()
-        options_layout = QHBoxLayout(self.options_container)
-        options_layout.setContentsMargins(0, 10, 0, 0)
-        options_layout.setSpacing(8)
-        options_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
         
         self.btn_style = """
             QPushButton {
@@ -210,10 +328,10 @@ class SebhaOverlay(QWidget):
                 background-color: rgba(255, 255, 255, 80);
             }
         """
-        self.reset_btn = QPushButton("✖")
+        self.reset_btn = QPushButton("↺")
         self.reset_btn.setFont(self.get_english_font(12, True))
         self.reset_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.reset_btn.setStyleSheet(self.btn_style.replace("40", "80").replace("255, 255, 255", "255, 80, 80"))
+        self.reset_btn.setStyleSheet(self.btn_style)
         self.reset_btn.clicked.connect(self.reset_count)
         
         self.morning_btn = QPushButton("☀️")
@@ -235,6 +353,12 @@ class SebhaOverlay(QWidget):
         self.exit_btn.clicked.connect(self.exit_session)
         self.exit_btn.setVisible(False)
 
+        self.hide_btn = QPushButton("👁️")
+        self.hide_btn.setFont(self.get_english_font(12, True))
+        self.hide_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.hide_btn.setStyleSheet(self.btn_style)
+        self.hide_btn.clicked.connect(self.hide_overlay_instantly)
+
         self.back_btn = QPushButton("◀")
         self.back_btn.setFont(self.get_english_font(12, True))
         self.back_btn.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -252,6 +376,7 @@ class SebhaOverlay(QWidget):
         options_layout.addWidget(self.night_btn)
         options_layout.addWidget(self.reset_btn)
         options_layout.addWidget(self.exit_btn)
+        options_layout.addWidget(self.hide_btn)
         options_layout.addWidget(self.next_btn)
         
         self.options_container.setVisible(False)
@@ -259,7 +384,6 @@ class SebhaOverlay(QWidget):
         container_layout.addWidget(self.zikr_label)
         container_layout.addWidget(self.benefit_label)
         container_layout.addWidget(self.count_label)
-        container_layout.addWidget(self.options_container)
         
         self.main_layout.addWidget(self.container)
         self.update_ui_state()
@@ -270,20 +394,19 @@ class SebhaOverlay(QWidget):
         return self.rect().contains(pos)
 
     def warm_up(self):
-        # Force compilation of styles, layout generation, and font rasterization for both states
-        self.options_container.setVisible(True)
-        self.update_ui_state(force_hovered=True)
-        self.options_container.setVisible(False)
-        self.update_ui_state(force_hovered=False)
+        # Force compilation of styles, layout generation, and font rasterization
+        self.show_options_bar()
+        self.update_ui_state()
+        self.hide_options_bar()
 
-    def update_ui_state(self, force_hovered=None):
-        is_hovered = force_hovered if force_hovered is not None else self.is_cursor_inside()
+    def update_ui_state(self):
+        is_hovered = self.is_cursor_inside()
         
         if self.mode == 'FREE':
             if self.zikr_label.text() != self.zikr:
                 self.zikr_label.setText(self.zikr)
-                font_size = self.get_dynamic_font_size(self.zikr, 18)
-                self.zikr_label.setFont(self.get_arabic_font(font_size, True))
+            font_size = self.get_dynamic_font_size(self.zikr, 18)
+            self.zikr_label.setFont(self.get_arabic_font(font_size, True))
                 
             self.benefit_label.setVisible(False)
             self.count_label.setText(str(self.count))
@@ -296,33 +419,27 @@ class SebhaOverlay(QWidget):
             self.reset_btn.setVisible(True)
             self.exit_btn.setVisible(False)
             self.next_btn.setVisible(True)
+            self.hide_btn.setVisible(True)
             
-            base_width = 350 if is_hovered else 250
-            zikr_len = len(self.zikr)
-            if zikr_len > 100:
-                target_width = base_width + 120
-            elif zikr_len > 50:
-                target_width = base_width + 70
-            else:
-                target_width = base_width
+            target_width = 400
         else:
             session_data = self.db.get(self.mode.lower(), [])
             if self.session_index < len(session_data):
                 item = session_data[self.session_index]
                 text = item.get("text", "")
                 
-                # Only update text and font if the zikr has actually changed
+                # We always calculate the zikr font size so we can base the benefit size on it
+                font_size = self.get_dynamic_font_size(text, 16)
                 if self.zikr_label.text() != text:
                     self.zikr_label.setText(text)
-                    font_size = self.get_dynamic_font_size(text, 16)
-                    self.zikr_label.setFont(self.get_arabic_font(font_size, True))
+                self.zikr_label.setFont(self.get_arabic_font(font_size, True))
                 
                 benefit = item.get("benefit", "")
                 if benefit and is_hovered:
                     if self.benefit_label.text() != benefit:
                         self.benefit_label.setText(benefit)
-                        benefit_size = self.get_dynamic_font_size(benefit, 14)
-                        self.benefit_label.setFont(self.get_arabic_font(benefit_size, False))
+                    benefit_size = font_size - 4
+                    self.benefit_label.setFont(self.get_arabic_font(benefit_size, False))
                     self.benefit_label.setVisible(True)
                 else:
                     self.benefit_label.setVisible(False)
@@ -344,21 +461,16 @@ class SebhaOverlay(QWidget):
             self.reset_btn.setVisible(False)
             self.exit_btn.setVisible(True)
             self.next_btn.setVisible(True)
+            self.hide_btn.setVisible(True)
             
-            base_width = 500
-            text_len = len(text)
-            if text_len > 250:
-                target_width = base_width + 150
-            elif text_len > 150:
-                target_width = base_width + 80
-            else:
-                target_width = base_width
+            target_width = 500
             
         # Calculate width available for labels inside the container (accounting for container and main margins)
         label_width = target_width - 60
         
         # Apply the constrained width to the container and labels
         self.container.setFixedWidth(target_width - 30)
+        self.upper_widget.setFixedWidth(target_width - 30)
         self.zikr_label.setFixedWidth(label_width)
         self.benefit_label.setFixedWidth(label_width)
         
@@ -382,21 +494,17 @@ class SebhaOverlay(QWidget):
         if self.count_label.isVisible() and self.count_label.text():
             container_content_height += 10 + self.count_label.sizeHint().height()
             
-        # 4. options_container (if visible)
-        if self.options_container.isVisible():
-            container_content_height += 10 + self.options_container.sizeHint().height()
-            
         # Add container layout top/bottom margins (15 + 15 = 30)
         hint_height = container_content_height + 30
         
-        # Calculate target height (content height + main layout margins + safety padding for custom fonts)
-        target_height = hint_height + 45
+        # Calculate target height (content height + upper_widget height 40 + layout spacing 10 + main margins 30)
+        target_height = hint_height + 80
         
         # Enforce minimum heights for visual consistency
         if self.mode == 'FREE':
-            min_height = 190 if is_hovered else 150
+            min_height = 160
         else:
-            min_height = 250 if is_hovered else 210
+            min_height = 220
             
         target_height = max(min_height, target_height)
         self.apply_geometry(target_width, target_height)
@@ -420,14 +528,16 @@ class SebhaOverlay(QWidget):
         if not self.db.get(mode.lower()):
             print(f"No data for {mode}")
             return
-        self.mode = mode
-        self.session_index = 0
-        self.session_count = 0
-        self.hide_timer.start()
-        # Force text update and scroll reset by clearing labels first
-        self.zikr_label.setText("")
-        self.benefit_label.setText("")
-        self.update_ui_state()
+            
+        def perform_change():
+            self.mode = mode
+            self.session_index = 0
+            self.session_count = 0
+            self.zikr_label.setText("")
+            self.benefit_label.setText("")
+            self.show_overlay()
+            
+        self.transition_to_zikr(perform_change)
 
     def finish_session(self):
         if self.mode == 'MORNING':
@@ -440,13 +550,22 @@ class SebhaOverlay(QWidget):
         self.exit_session()
 
     def exit_session(self):
-        self.mode = 'FREE'
-        self.hide_timer.start()
-        # Force update by clearing text
-        self.zikr_label.setText("")
-        self.update_ui_state()
+        def perform_change():
+            self.mode = 'FREE'
+            self.zikr_label.setText("")
+            self.show_overlay()
+        self.transition_to_zikr(perform_change)
+
+    def is_overlay_hidden(self):
+        return (not self.isVisible() or 
+                self.opacity_effect.opacity() == 0.0 or 
+                (self.fade_anim.state() == QPropertyAnimation.State.Running and self.fade_anim.endValue() == 0.0))
 
     def increment_count(self):
+        if self.is_overlay_hidden():
+            self.show_overlay()
+            return
+
         if self.mode == 'FREE':
             self.count += 1
             self.stats["total_free_clicks"] += 1
@@ -461,14 +580,17 @@ class SebhaOverlay(QWidget):
                 self.session_count += 1
                 
                 if self.session_count >= target:
-                    self.session_index += 1
-                    self.session_count = 0
-                    self.update_ui_state()
+                    def perform_change():
+                        self.session_index += 1
+                        self.session_count = 0
+                        self.zikr_label.setText("")
+                        self.benefit_label.setText("")
+                        self.show_overlay()
+                    self.transition_to_zikr(perform_change)
                 else:
                     # Index didn't change! Only update the count label. Very fast, no lag!
                     self.count_label.setText(f"{self.session_count} / {target}")
-                    
-                self.show_overlay()
+                    self.show_overlay()
 
     def reset_count(self):
         if self.mode == 'FREE':
@@ -476,16 +598,38 @@ class SebhaOverlay(QWidget):
             self.count_label.setText(str(self.count))
             self.save_config()
         
+    def transition_to_zikr(self, update_func):
+        self.fade_anim.stop()
+        self.fade_anim.setStartValue(self.opacity_effect.opacity())
+        self.fade_anim.setEndValue(0.1)
+        self.fade_anim.setDuration(120)
+        
+        def on_fade_out():
+            try:
+                self.fade_anim.finished.disconnect(on_fade_out)
+            except Exception:
+                pass
+            update_func()
+            self.update_ui_state()
+            
+            self.fade_anim.setStartValue(0.1)
+            self.fade_anim.setEndValue(1.0)
+            self.fade_anim.setDuration(180)
+            self.fade_anim.start()
+            
+        self.fade_anim.finished.connect(on_fade_out)
+        self.fade_anim.start()
+
     def change_zikr(self, index_delta):
-        if self.mode != 'FREE':
+        if self.mode != 'FREE' or not self.azkar_list:
             return
             
-        if not self.azkar_list:
-            return
-        self.zikr_index = (self.zikr_index + index_delta) % len(self.azkar_list)
-        self.zikr = self.azkar_list[self.zikr_index]
-        self.update_ui_state()
-        self.save_config()
+        def perform_change():
+            self.zikr_index = (self.zikr_index + index_delta) % len(self.azkar_list)
+            self.zikr = self.azkar_list[self.zikr_index]
+            self.save_config()
+            
+        self.transition_to_zikr(perform_change)
 
     def log_history_event(self, event_type):
         from datetime import date
@@ -503,10 +647,16 @@ class SebhaOverlay(QWidget):
     def on_fade_finished(self):
         if self.opacity_effect.opacity() == 0.0:
             self.hide()
-            self.options_container.setVisible(False)
-            self.update_ui_state()
+            self.hide_options_bar()
+
+    def update_hide_timer_interval(self):
+        text = self.zikr_label.text()
+        char_count = len(text) if text else 0
+        interval = max(3000, min(15000, 3000 + char_count * 75))
+        self.hide_timer.setInterval(interval)
 
     def show_overlay(self):
+        self.update_hide_timer_interval()
         self.hide_timer.start()
         if self.fade_anim.state() == QPropertyAnimation.State.Running and self.fade_anim.endValue() == 1.0:
             return
@@ -527,19 +677,49 @@ class SebhaOverlay(QWidget):
             self.fade_anim.setEndValue(0.0)
             self.fade_anim.start()
 
+    def hide_overlay_instantly(self):
+        self.hide_timer.stop()
+        self.fade_anim.stop()
+        self.opacity_effect.setOpacity(0.0)
+        self.hide()
+        self.hide_options_bar()
+
+    def check_hover_zones(self):
+        pos = self.mapFromGlobal(self.cursor().pos())
+        if self.rect().contains(pos):
+            # container starts at y=65 (top margin 15 + upper_widget 40 + spacing 10)
+            if pos.y() < 65:
+                self.show_options_bar()
+            else:
+                self.hide_options_bar()
+        else:
+            self.hover_timer.stop()
+            self.hide_options_bar()
+            if not self.hide_timer.isActive() and not self.is_overlay_hidden():
+                self.hide_timer.start()
+
+    def show_options_bar(self):
+        if not self.options_container.isVisible():
+            self.trigger_circle.setVisible(False)
+            self.options_container.setVisible(True)
+
+    def hide_options_bar(self):
+        if self.options_container.isVisible():
+            self.options_container.setVisible(False)
+            self.trigger_circle.setVisible(True)
+
     def enterEvent(self, event):
         self.hide_timer.stop()
-        self.options_container.setVisible(True)
-        self.update_ui_state()
+        self.hover_timer.start()
+        self.check_hover_zones()
         self.fade_anim.stop()
         self.opacity_effect.setOpacity(1.0)
         super().enterEvent(event)
 
     def leaveEvent(self, event):
-        if not self.is_cursor_inside():
-            self.options_container.setVisible(False)
-            self.hide_timer.start()
-            self.update_ui_state()
+        self.hover_timer.stop()
+        self.hide_options_bar()
+        self.hide_timer.start()
         super().leaveEvent(event)
         
     def wheelEvent(self, event):
@@ -555,12 +735,13 @@ class SebhaOverlay(QWidget):
             self.change_zikr(-1)
         else:
             if self.session_index > 0:
-                self.session_index -= 1
-                self.session_count = 0
-                self.zikr_label.setText("")
-                self.benefit_label.setText("")
-                self.update_ui_state()
-                self.show_overlay()
+                def perform_change():
+                    self.session_index -= 1
+                    self.session_count = 0
+                    self.zikr_label.setText("")
+                    self.benefit_label.setText("")
+                    self.show_overlay()
+                self.transition_to_zikr(perform_change)
 
     def next_zikr(self):
         if self.mode == 'FREE':
@@ -568,9 +749,10 @@ class SebhaOverlay(QWidget):
         else:
             session_data = self.db.get(self.mode.lower(), [])
             if self.session_index < len(session_data):
-                self.session_index += 1
-                self.session_count = 0
-                self.zikr_label.setText("")
-                self.benefit_label.setText("")
-                self.update_ui_state()
-                self.show_overlay()
+                def perform_change():
+                    self.session_index += 1
+                    self.session_count = 0
+                    self.zikr_label.setText("")
+                    self.benefit_label.setText("")
+                    self.show_overlay()
+                self.transition_to_zikr(perform_change)
