@@ -4,7 +4,8 @@ import os
 import subprocess
 from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel, 
                              QPushButton, QTabWidget, QWidget, QCheckBox,
-                             QListWidget, QLineEdit, QMessageBox, QApplication)
+                             QListWidget, QLineEdit, QMessageBox, QApplication,
+                             QComboBox, QListWidgetItem)
 from PyQt6.QtCore import Qt, pyqtSignal, QRect, QThread
 from PyQt6.QtGui import QPainter, QColor, QFont
 from pynput import mouse, keyboard
@@ -311,6 +312,30 @@ class SettingsDialog(QDialog):
             json.dump(self.config, f, ensure_ascii=False, indent=4)
         self.config_updated.emit()
 
+    def resource_path(self, relative_path):
+        try:
+            base_path = sys._MEIPASS
+        except Exception:
+            base_path = os.path.dirname(os.path.abspath(__file__))
+        return os.path.join(base_path, relative_path)
+
+    def get_available_font_families(self):
+        from PyQt6.QtGui import QFontDatabase
+        fonts_dir = self.resource_path("assets/fonts")
+        families = []
+        if os.path.exists(fonts_dir):
+            for filename in os.listdir(fonts_dir):
+                if filename.lower().endswith((".ttf", ".otf")):
+                    path = os.path.join(fonts_dir, filename)
+                    font_id = QFontDatabase.addApplicationFont(path)
+                    if font_id != -1:
+                        fams = QFontDatabase.applicationFontFamilies(font_id)
+                        if fams and fams[0] not in families:
+                            families.append(fams[0])
+        if not families:
+            families = ["Segoe UI"]
+        return families
+
     def initUI(self):
         layout = QVBoxLayout(self)
         
@@ -358,6 +383,25 @@ class SettingsDialog(QDialog):
         self.autoupdate_checkbox.setChecked(self.config.get("auto_update", True))
         self.autoupdate_checkbox.toggled.connect(self.toggle_autoupdate)
         settings_layout.addWidget(self.autoupdate_checkbox)
+        
+        # Font Settings
+        font_layout = QHBoxLayout()
+        font_layout.addWidget(QLabel("Arabic Font Family:"))
+        self.font_combo = QComboBox()
+        
+        available_fonts = self.get_available_font_families()
+        self.font_combo.addItems(available_fonts)
+        
+        current_font = self.config.get("font_family", "")
+        if current_font in available_fonts:
+            self.font_combo.setCurrentText(current_font)
+        elif available_fonts:
+            self.font_combo.setCurrentIndex(0)
+            self.config["font_family"] = available_fonts[0]
+            
+        self.font_combo.currentTextChanged.connect(self.on_font_changed)
+        font_layout.addWidget(self.font_combo)
+        settings_layout.addLayout(font_layout)
         
         # Check for Updates Button
         self.update_btn = QPushButton("Check for Updates")
@@ -454,8 +498,43 @@ class SettingsDialog(QDialog):
 
     def showEvent(self, event):
         self.load_config()
+        self.update_ui_from_config()
         self.refresh_stats_ui()
         super().showEvent(event)
+
+    def update_ui_from_config(self):
+        self.startup_checkbox.blockSignals(True)
+        self.autoupdate_checkbox.blockSignals(True)
+        self.font_combo.blockSignals(True)
+        
+        # 1. Hotkey
+        hotkey = self.config.get("trigger_keyboard", "")
+        self.key_btn_lbl.setText(hotkey if hotkey else "None")
+        
+        # 2. Mouse Trigger
+        mouse_trig = self.config.get("trigger_mouse", "")
+        self.mouse_btn_lbl.setText(mouse_trig if mouse_trig else "None")
+        
+        # 3. Startup
+        self.startup_checkbox.setChecked(self.check_startup())
+        
+        # 4. Auto Update
+        self.autoupdate_checkbox.setChecked(self.config.get("auto_update", True))
+        
+        # 5. Font Combo
+        available_fonts = self.get_available_font_families()
+        current_font = self.config.get("font_family", "")
+        self.font_combo.clear()
+        self.font_combo.addItems(available_fonts)
+        if current_font in available_fonts:
+            self.font_combo.setCurrentText(current_font)
+        elif available_fonts:
+            self.font_combo.setCurrentIndex(0)
+            self.config["font_family"] = available_fonts[0]
+            
+        self.startup_checkbox.blockSignals(False)
+        self.autoupdate_checkbox.blockSignals(False)
+        self.font_combo.blockSignals(False)
 
     def refresh_stats_ui(self):
         stats = self.config.get("stats", {})
