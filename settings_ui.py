@@ -128,7 +128,9 @@ class UpdateCheckerThread(QThread):
                         else:
                             self.check_failed.emit("Downloaded file is empty or too small.")
                     else:
-                        self.check_failed.emit(f"Could not find asset {expected_asset_name} in release.")
+                        # If the release exists but doesn't have the binary for our OS yet,
+                        # treat it as no update found for our platform.
+                        self.no_update_found.emit()
                 else:
                     self.check_failed.emit(f"Unsupported operating system: {system_name}")
             else:
