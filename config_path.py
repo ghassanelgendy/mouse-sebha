@@ -27,6 +27,7 @@ DEFAULT_CONFIG = {
     "trigger_mouse": "Button.x2",
     "trigger_keyboard": "",
     "auto_update": True,
+    "font_family": "Default",
     "stats": {
         "total_free_clicks": 0,
         "morning_sessions_completed": 0,
@@ -37,7 +38,7 @@ DEFAULT_CONFIG = {
 
 # If the config file does not exist, migrate or create default
 if not os.path.exists(CONFIG_PATH):
-    local_config = "config.json"
+    local_config = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.json")
     if os.path.exists(local_config):
         try:
             import shutil

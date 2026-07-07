@@ -17,15 +17,19 @@ def resource_path(relative_path):
     try:
         base_path = sys._MEIPASS
     except Exception:
-        base_path = os.path.abspath(".")
+        base_path = os.path.dirname(os.path.abspath(__file__))
     return os.path.join(base_path, relative_path)
+
 
 def main():
     app = QApplication(sys.argv)
     app.setQuitOnLastWindowClosed(False)
 
     # Load custom font (we don't apply it globally so English texts stay clean)
-    QFontDatabase.addApplicationFont(resource_path("assets/font.ttf"))
+    default_font_path = resource_path("assets/fonts/font.ttf")
+    if not os.path.exists(default_font_path):
+        default_font_path = resource_path("assets/font.ttf")
+    QFontDatabase.addApplicationFont(default_font_path)
 
     # Load Logo
     app_icon = QIcon(resource_path("assets/logo.ico"))
