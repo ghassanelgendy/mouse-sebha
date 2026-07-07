@@ -81,6 +81,32 @@ jobs:
       uses: actions/checkout@v4
       with:
         ref: ${{ needs.tag.outputs.new_tag }}
+        fetch-depth: 0
+
+    - name: Generate Changelog
+      shell: bash
+      run: |
+        git fetch --tags
+        current_tag="${{ needs.tag.outputs.new_tag }}"
+        tags=($(git tag -l "v*" | sort -V))
+        prev_tag=""
+        for i in "${!tags[@]}"; do
+           if [[ "${tags[$i]}" == "$current_tag" ]]; then
+              if (( i > 0 )); then
+                 prev_tag="${tags[$i-1]}"
+              fi
+              break
+           fi
+        done
+        
+        echo "## Changes in $current_tag" > changelog.md
+        if [ -z "$prev_tag" ]; then
+          git log --pretty=format:"* %s (%h)" >> changelog.md
+        else
+          git log ${prev_tag}..${current_tag} --pretty=format:"* %s (%h)" >> changelog.md
+        fi
+        echo "" >> changelog.md
+        cat changelog.md
 
     - name: Set up Python
       uses: actions/setup-python@v5
@@ -124,6 +150,7 @@ jobs:
         fail_on_unmatched_files: false
         tag_name: ${{ needs.tag.outputs.new_tag }}
         name: Release ${{ needs.tag.outputs.new_tag }}
+        body_path: changelog.md
         prerelease: false
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
