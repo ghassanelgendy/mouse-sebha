@@ -517,6 +517,51 @@ class SettingsDialog(QDialog):
         editor_layout.addLayout(ctrl_layout)
         tabs.addTab(editor_tab, "Dhikr Editor")
         
+        # About Tab
+        about_tab = QWidget()
+        about_layout = QVBoxLayout(about_tab)
+        about_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        about_layout.setSpacing(12)
+        about_layout.setContentsMargins(20, 20, 20, 20)
+        
+        app_title = QLabel("📿 Sebha")
+        app_title.setFont(QFont("Segoe UI", 24, QFont.Weight.Bold))
+        app_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        about_layout.addWidget(app_title)
+        
+        app_version_lbl = QLabel(f"Version: {self.current_version}")
+        app_version_lbl.setFont(QFont("Segoe UI", 11, QFont.Weight.Bold))
+        app_version_lbl.setStyleSheet("color: #888888;")
+        app_version_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        about_layout.addWidget(app_version_lbl)
+        
+        app_desc = QLabel(
+            "Sebha is a desktop application designed to keep you connected with "
+            "Dhikr and Athkar sessions (Morning/Evening) directly from your screen.\n\n"
+            "Use the configured hotkey or mouse buttons to increment your count while working."
+        )
+        app_desc.setWordWrap(True)
+        app_desc.setFont(QFont("Segoe UI", 10))
+        app_desc.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        app_desc.setStyleSheet("color: #bbbbbb; line-height: 1.4;")
+        about_layout.addWidget(app_desc)
+        
+        about_layout.addStretch()
+        
+        github_link = QLabel('<a href="https://github.com/ghassanelgendy/mouse-sebha" style="color: #4CAF50; text-decoration: none;">GitHub Repository</a>')
+        github_link.setOpenExternalLinks(True)
+        github_link.setFont(QFont("Segoe UI", 10, QFont.Weight.Bold))
+        github_link.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        about_layout.addWidget(github_link)
+        
+        license_lbl = QLabel("Released under the MIT License.")
+        license_lbl.setFont(QFont("Segoe UI", 9))
+        license_lbl.setStyleSheet("color: #666666;")
+        license_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        about_layout.addWidget(license_lbl)
+        
+        tabs.addTab(about_tab, "About")
+        
         layout.addWidget(tabs)
 
     def showEvent(self, event):

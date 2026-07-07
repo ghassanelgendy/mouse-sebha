@@ -53,7 +53,7 @@ def main():
     show_action = menu.addAction("Show Overlay")
     show_action.triggered.connect(overlay.show_overlay)
     
-    settings_action = menu.addAction("⚙️ Settings")
+    settings_action = menu.addAction("Settings")
     settings_action.triggered.connect(settings_dialog.show)
     
     menu.addSeparator()
