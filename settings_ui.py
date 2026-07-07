@@ -463,7 +463,9 @@ class SettingsDialog(QDialog):
         editor_layout = QVBoxLayout(editor_tab)
         
         self.zikr_list_widget = QListWidget()
-        self.zikr_list_widget.addItems(self.config.get("azkar_list", ["سبحان الله"]))
+        self.zikr_list_widget.itemChanged.connect(self.on_zikr_item_changed)
+        for text in self.config.get("azkar_list", ["سبحان الله"]):
+            self.add_editable_item(text)
         editor_layout.addWidget(self.zikr_list_widget)
         
         add_layout = QHBoxLayout()
@@ -551,8 +553,36 @@ class SettingsDialog(QDialog):
         self.streak_label.setText(f"🔥 Dhikr Streak: {streak} Day{'s' if streak != 1 else ''}")
         self.chart.update_history(history)
         
+        self.zikr_list_widget.blockSignals(True)
         self.zikr_list_widget.clear()
-        self.zikr_list_widget.addItems(self.config.get("azkar_list", ["سبحان الله"]))
+        for text in self.config.get("azkar_list", ["سبحان الله"]):
+            self.add_editable_item(text)
+        self.zikr_list_widget.blockSignals(False)
+
+    def add_editable_item(self, text):
+        item = QListWidgetItem(text)
+        item.setFlags(item.flags() | Qt.ItemFlag.ItemIsEditable)
+        self.zikr_list_widget.addItem(item)
+
+    def on_zikr_item_changed(self, item):
+        text = item.text().strip()
+        if not text:
+            QMessageBox.warning(self, "Invalid Text", "Dhikr text cannot be empty.")
+            self.refresh_stats_ui()
+            return
+            
+        azkar = []
+        for i in range(self.zikr_list_widget.count()):
+            azkar.append(self.zikr_list_widget.item(i).text().strip())
+            
+        row = self.zikr_list_widget.row(item)
+        if azkar.count(text) > 1:
+            QMessageBox.warning(self, "Duplicate", "This Dhikr is already in your list.")
+            self.refresh_stats_ui()
+            return
+            
+        self.config["azkar_list"] = azkar
+        self.save_config()
 
     def add_zikr_item(self):
         text = self.new_zikr_input.text().strip()
@@ -562,7 +592,11 @@ class SettingsDialog(QDialog):
             QMessageBox.warning(self, "Duplicate", "This Dhikr is already in your list.")
             return
         self.config["azkar_list"] = self.config.get("azkar_list", []) + [text]
-        self.zikr_list_widget.addItem(text)
+        
+        self.zikr_list_widget.blockSignals(True)
+        self.add_editable_item(text)
+        self.zikr_list_widget.blockSignals(False)
+        
         self.new_zikr_input.clear()
         self.save_config()
         
@@ -574,8 +608,10 @@ class SettingsDialog(QDialog):
             QMessageBox.warning(self, "Warning", "You must keep at least one Dhikr in the list.")
             return
         
+        self.zikr_list_widget.blockSignals(True)
         item = self.zikr_list_widget.takeItem(selected)
         del item
+        self.zikr_list_widget.blockSignals(False)
         
         azkar = []
         for i in range(self.zikr_list_widget.count()):
@@ -587,18 +623,22 @@ class SettingsDialog(QDialog):
         row = self.zikr_list_widget.currentRow()
         if row <= 0:
             return
+        self.zikr_list_widget.blockSignals(True)
         current_item = self.zikr_list_widget.takeItem(row)
         self.zikr_list_widget.insertItem(row - 1, current_item)
         self.zikr_list_widget.setCurrentRow(row - 1)
+        self.zikr_list_widget.blockSignals(False)
         self.save_reordered_list()
         
     def move_zikr_down(self):
         row = self.zikr_list_widget.currentRow()
         if row == -1 or row >= self.zikr_list_widget.count() - 1:
             return
+        self.zikr_list_widget.blockSignals(True)
         current_item = self.zikr_list_widget.takeItem(row)
         self.zikr_list_widget.insertItem(row + 1, current_item)
         self.zikr_list_widget.setCurrentRow(row + 1)
+        self.zikr_list_widget.blockSignals(False)
         self.save_reordered_list()
         
     def save_reordered_list(self):
