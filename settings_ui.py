@@ -139,11 +139,20 @@ def apply_update_and_restart(new_exe_path):
     import subprocess
     import platform
     import sys
+    import os
     
     current_exe = sys.executable
     current_pid = os.getpid()
     system_name = platform.system()
     
+    # Clean PyInstaller environment variables to ensure the updated executable starts fresh 
+    # and doesn't try to reuse the parent process's soon-to-be-deleted temporary _MEI directory.
+    env = os.environ.copy()
+    env["PYINSTALLER_RESET_ENVIRONMENT"] = "1"
+    for key in list(env.keys()):
+        if key.startswith("_PYI_") or key in ("_MEIPASS2", "_MEIPASS"):
+            env.pop(key, None)
+            
     if system_name == "Windows":
         ps_script = f'''
 $proc = Get-Process -Id {current_pid} -ErrorAction SilentlyContinue
@@ -156,7 +165,8 @@ Start-Process "{current_exe}"
 '''
         subprocess.Popen(
             ["powershell", "-WindowStyle", "Hidden", "-Command", ps_script],
-            creationflags=subprocess.CREATE_NO_WINDOW
+            creationflags=subprocess.CREATE_NO_WINDOW,
+            env=env
         )
     else:
         sh_script = f'''
@@ -166,7 +176,7 @@ mv "{new_exe_path}" "{current_exe}"
 chmod +x "{current_exe}"
 "{current_exe}" &
 '''
-        subprocess.Popen(["sh", "-c", sh_script])
+        subprocess.Popen(["sh", "-c", sh_script], env=env)
         
     QApplication.quit()
 
