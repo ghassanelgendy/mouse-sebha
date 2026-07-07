@@ -298,6 +298,7 @@ class SebhaOverlay(QWidget):
         self.zikr_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.zikr_label.setWordWrap(True)
         self.zikr_label.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Minimum)
+        self.zikr_label.mouseDoubleClickEvent = self.copy_zikr_to_clipboard
         
         self.benefit_label = QLabel("")
         self.benefit_label.setFont(self.get_arabic_font(14, False))
@@ -598,6 +599,15 @@ class SebhaOverlay(QWidget):
             self.count = 0
             self.count_label.setText(str(self.count))
             self.save_config()
+        
+    def copy_zikr_to_clipboard(self, event):
+        text = self.zikr_label.text()
+        if text:
+            clipboard = QApplication.clipboard()
+            clipboard.setText(text)
+            # Show a brief green flash feedback
+            self.zikr_label.setStyleSheet("color: #4CAF50;") # Green
+            QTimer.singleShot(800, lambda: self.zikr_label.setStyleSheet("color: white;"))
         
     def transition_to_zikr(self, update_func):
         self.fade_anim.stop()
