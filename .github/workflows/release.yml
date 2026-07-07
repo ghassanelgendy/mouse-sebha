@@ -81,32 +81,6 @@ jobs:
       uses: actions/checkout@v4
       with:
         ref: ${{ needs.tag.outputs.new_tag }}
-        fetch-depth: 0
-
-    - name: Generate Changelog
-      shell: bash
-      run: |
-        git fetch --tags
-        current_tag="${{ needs.tag.outputs.new_tag }}"
-        tags=($(git tag -l "v*" | sort -V))
-        prev_tag=""
-        for i in "${!tags[@]}"; do
-           if [[ "${tags[$i]}" == "$current_tag" ]]; then
-              if (( i > 0 )); then
-                 prev_tag="${tags[$i-1]}"
-              fi
-              break
-           fi
-        done
-        
-        echo "## Changes in $current_tag" > changelog.md
-        if [ -z "$prev_tag" ]; then
-          git log --pretty=format:"* %s (%h)" >> changelog.md
-        else
-          git log ${prev_tag}..${current_tag} --pretty=format:"* %s (%h)" >> changelog.md
-        fi
-        echo "" >> changelog.md
-        cat changelog.md
 
     - name: Set up Python
       uses: actions/setup-python@v5
@@ -140,14 +114,64 @@ jobs:
       run: |
         "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" /Odist installer.iss
 
-    - name: Create / Update Release
-      id: create_release
+    - name: Upload Build Artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: sebha-build-${{ matrix.os-name }}
+        path: |
+          dist/${{ matrix.artifact_name }}
+          dist/Sebha-Windows-Setup.exe
+        if-no-files-found: ignore
+
+  publish:
+    needs: [tag, build]
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        ref: ${{ needs.tag.outputs.new_tag }}
+        fetch-depth: 0
+
+    - name: Generate Changelog
+      shell: bash
+      run: |
+        git fetch --tags
+        current_tag="${{ needs.tag.outputs.new_tag }}"
+        tags=($(git tag -l "v*" | sort -V))
+        prev_tag=""
+        for i in "${!tags[@]}"; do
+           if [[ "${tags[$i]}" == "$current_tag" ]]; then
+              if (( i > 0 )); then
+                 prev_tag="${tags[$i-1]}"
+              fi
+              break
+           fi
+        done
+        
+        echo "## Changes in $current_tag" > changelog.md
+        if [ -z "$prev_tag" ]; then
+          git log --pretty=format:"* %s (%h)" >> changelog.md
+        else
+          git log ${prev_tag}..${current_tag} --pretty=format:"* %s (%h)" >> changelog.md
+        fi
+        echo "" >> changelog.md
+        cat changelog.md
+
+    - name: Download All Artifacts
+      uses: actions/download-artifact@v4
+      with:
+        path: release-assets
+
+    - name: Create GitHub Release
       uses: softprops/action-gh-release@v2
       with:
         files: |
-          dist/${{ matrix.artifact_name }}
-          dist/Sebha-Windows-Setup.exe
-        fail_on_unmatched_files: false
+          release-assets/sebha-build-Windows/Sebha-Windows.exe
+          release-assets/sebha-build-Windows/Sebha-Windows-Setup.exe
+          release-assets/sebha-build-Linux/Sebha-Linux
+          release-assets/sebha-build-macOS/Sebha-macOS
+        fail_on_unmatched_files: true
         tag_name: ${{ needs.tag.outputs.new_tag }}
         name: Release ${{ needs.tag.outputs.new_tag }}
         body_path: changelog.md
