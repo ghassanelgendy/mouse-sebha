@@ -146,8 +146,7 @@ def apply_update_and_restart(new_exe_path):
     current_pid = os.getpid()
     system_name = platform.system()
     
-    # Clean PyInstaller environment variables to ensure the updated executable starts fresh 
-    # and doesn't try to reuse the parent process's soon-to-be-deleted temporary _MEI directory.
+    # Clean PyInstaller environment variables in the parent python process environment copy
     env = os.environ.copy()
     env["PYINSTALLER_RESET_ENVIRONMENT"] = "1"
     for key in list(env.keys()):
@@ -155,6 +154,9 @@ def apply_update_and_restart(new_exe_path):
             env.pop(key, None)
             
     if system_name == "Windows":
+        # In Windows, Start-Process inside PowerShell can bypass PowerShell's environment.
+        # We explicitly clear all PyInstaller environment variables inside the PowerShell session 
+        # before invoking Start-Process to guarantee the child runs in a clean environment.
         ps_script = f'''
 $proc = Get-Process -Id {current_pid} -ErrorAction SilentlyContinue
 if ($proc) {{
@@ -162,6 +164,12 @@ if ($proc) {{
 }}
 Remove-Item -Force "{current_exe}" -ErrorAction SilentlyContinue
 Move-Item -Force "{new_exe_path}" "{current_exe}"
+
+Remove-Item env:_MEIPASS -ErrorAction SilentlyContinue
+Remove-Item env:_MEIPASS2 -ErrorAction SilentlyContinue
+Get-ChildItem env:* | Where-Object {{ $_.Name -like "_PYI_*" }} | Remove-Item -ErrorAction SilentlyContinue
+$env:PYINSTALLER_RESET_ENVIRONMENT = "1"
+
 Start-Process "{current_exe}"
 '''
         subprocess.Popen(
@@ -170,11 +178,22 @@ Start-Process "{current_exe}"
             env=env
         )
     else:
+        # In Unix, we do the same env cleaning inside the bash/sh shell before launching the new process.
         sh_script = f'''
 sleep 2
 rm -f "{current_exe}"
 mv "{new_exe_path}" "{current_exe}"
 chmod +x "{current_exe}"
+
+unset _MEIPASS
+unset _MEIPASS2
+for var in \$(env | cut -d= -f1); do
+  if [[ "\$var" =~ ^_PYI_ ]]; then
+    unset "\$var"
+  fi
+done
+export PYINSTALLER_RESET_ENVIRONMENT=1
+
 "{current_exe}" &
 '''
         subprocess.Popen(["sh", "-c", sh_script], env=env)
