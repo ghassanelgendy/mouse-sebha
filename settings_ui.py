@@ -536,45 +536,63 @@ class SettingsDialog(QDialog):
             self.save_config()
 
     def check_startup(self):
-        startup_dir = os.path.join(os.environ['APPDATA'], r'Microsoft\Windows\Start Menu\Programs\Startup')
-        return os.path.exists(os.path.join(startup_dir, 'Sebha.lnk'))
+        if sys.platform != "win32":
+            return False
+        try:
+            import winreg
+            key_path = r"Software\Microsoft\Windows\CurrentVersion\Run"
+            key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, key_path, 0, winreg.KEY_READ)
+            try:
+                val, _ = winreg.QueryValueEx(key, "Sebha")
+                return True
+            except FileNotFoundError:
+                return False
+            finally:
+                winreg.CloseKey(key)
+        except Exception:
+            return False
 
     def toggle_startup(self, checked):
-        startup_dir = os.path.join(os.environ['APPDATA'], r'Microsoft\Windows\Start Menu\Programs\Startup')
-        shortcut_path = os.path.join(startup_dir, 'Sebha.lnk')
-        if checked:
-            if getattr(sys, 'frozen', False):
-                exe_path = sys.executable
-                working_dir = os.path.dirname(exe_path)
-                ps_script = f'''
-$WshShell = New-Object -comObject WScript.Shell
-$Shortcut = $WshShell.CreateShortcut("{shortcut_path}")
-$Shortcut.TargetPath = "{exe_path}"
-$Shortcut.WorkingDirectory = "{working_dir}"
-$Shortcut.Save()
-'''
-            else:
-                pythonw_exe = os.path.join(os.path.dirname(sys.executable), 'pythonw.exe')
-                script_path = os.path.abspath('main.pyw')
-                working_dir = os.path.abspath('.')
-                ps_script = f'''
-$WshShell = New-Object -comObject WScript.Shell
-$Shortcut = $WshShell.CreateShortcut("{shortcut_path}")
-$Shortcut.TargetPath = "{pythonw_exe}"
-$Shortcut.Arguments = '"{script_path}"'
-$Shortcut.WorkingDirectory = "{working_dir}"
-$Shortcut.Save()
-'''
-            subprocess.Popen(
-                ["powershell", "-WindowStyle", "Hidden", "-Command", ps_script],
-                creationflags=subprocess.CREATE_NO_WINDOW
-            )
-        else:
+        if sys.platform != "win32":
+            return
+        
+        # Clean up old shortcut if it exists to avoid duplicate launches
+        try:
+            startup_dir = os.path.join(os.environ.get('APPDATA', ''), r'Microsoft\Windows\Start Menu\Programs\Startup')
+            shortcut_path = os.path.join(startup_dir, 'Sebha.lnk')
             if os.path.exists(shortcut_path):
                 os.remove(shortcut_path)
+        except Exception:
+            pass
+
+        try:
+            import winreg
+            key_path = r"Software\Microsoft\Windows\CurrentVersion\Run"
+            key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, key_path, 0, winreg.KEY_SET_VALUE)
+            if checked:
+                if getattr(sys, 'frozen', False):
+                    exe_path = sys.executable
+                    cmd = f'"{exe_path}"'
+                else:
+                    pythonw_exe = os.path.join(os.path.dirname(sys.executable), 'pythonw.exe')
+                    script_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'main.pyw')
+                    cmd = f'"{pythonw_exe}" "{script_path}"'
+                winreg.SetValueEx(key, "Sebha", 0, winreg.REG_SZ, cmd)
+            else:
+                try:
+                    winreg.DeleteValue(key, "Sebha")
+                except FileNotFoundError:
+                    pass
+            winreg.CloseKey(key)
+        except Exception as e:
+            print("Error toggling startup:", e)
 
     def toggle_autoupdate(self, checked):
         self.config["auto_update"] = checked
+        self.save_config()
+
+    def on_font_changed(self, text):
+        self.config["font_family"] = text
         self.save_config()
 
     def manual_update_check(self):
