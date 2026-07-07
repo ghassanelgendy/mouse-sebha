@@ -160,19 +160,32 @@ def apply_update_and_restart(new_exe_path):
         # We explicitly clear all PyInstaller environment variables inside the PowerShell session 
         # before invoking Start-Process to guarantee the child runs in a clean environment.
         ps_script = f'''
-$proc = Get-Process -Id {current_pid} -ErrorAction SilentlyContinue
-if ($proc) {{
-    $proc.WaitForExit(5000)
+$LogPath = Join-Path $env:TEMP "sebha_update.log"
+"Starting update. Parent PID: {current_pid}" | Out-File $LogPath
+try {{
+    $proc = Get-Process -Id {current_pid} -ErrorAction SilentlyContinue
+    if ($proc) {{
+        "Stopping parent process {current_pid}..." | Out-File $LogPath -Append
+        Stop-Process -Id {current_pid} -Force -ErrorAction SilentlyContinue
+        Start-Sleep -Seconds 2
+    }}
+    "Removing old executable: {current_exe}" | Out-File $LogPath -Append
+    Remove-Item -Force "{current_exe}" -ErrorAction Stop
+    "Moving new executable {new_exe_path} to {current_exe}" | Out-File $LogPath -Append
+    Move-Item -Force "{new_exe_path}" "{current_exe}" -ErrorAction Stop
+    
+    "Cleaning environment variables..." | Out-File $LogPath -Append
+    Remove-Item env:_MEIPASS -ErrorAction SilentlyContinue
+    Remove-Item env:_MEIPASS2 -ErrorAction SilentlyContinue
+    Get-ChildItem env:* | Where-Object {{ $_.Name -like "_PYI_*" }} | Remove-Item -ErrorAction SilentlyContinue
+    $env:PYINSTALLER_RESET_ENVIRONMENT = "1"
+    
+    "Starting updated process..." | Out-File $LogPath -Append
+    Start-Process "{current_exe}"
+    "Update completed successfully." | Out-File $LogPath -Append
+}} catch {{
+    $_ | Out-File $LogPath -Append
 }}
-Remove-Item -Force "{current_exe}" -ErrorAction SilentlyContinue
-Move-Item -Force "{new_exe_path}" "{current_exe}"
-
-Remove-Item env:_MEIPASS -ErrorAction SilentlyContinue
-Remove-Item env:_MEIPASS2 -ErrorAction SilentlyContinue
-Get-ChildItem env:* | Where-Object {{ $_.Name -like "_PYI_*" }} | Remove-Item -ErrorAction SilentlyContinue
-$env:PYINSTALLER_RESET_ENVIRONMENT = "1"
-
-Start-Process "{current_exe}"
 '''
         subprocess.Popen(
             ["powershell", "-WindowStyle", "Hidden", "-Command", ps_script],
