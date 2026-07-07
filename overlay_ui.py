@@ -564,7 +564,8 @@ class SebhaOverlay(QWidget):
     def increment_count(self):
         if self.is_overlay_hidden():
             self.show_overlay()
-            return
+            if self.mode != 'FREE':
+                return
 
         if self.mode == 'FREE':
             self.count += 1
