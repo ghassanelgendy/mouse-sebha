@@ -437,6 +437,24 @@ class SettingsDialog(QDialog):
         font_layout.addWidget(self.font_combo)
         settings_layout.addLayout(font_layout)
         
+        # Position Settings
+        pos_layout = QHBoxLayout()
+        pos_layout.addWidget(QLabel("Overlay Position:"))
+        self.pos_combo = QComboBox()
+        self.pos_combo.addItems([
+            "Top-Left",
+            "Top-Center",
+            "Top-Right",
+            "Bottom-Left",
+            "Bottom-Center",
+            "Bottom-Right"
+        ])
+        current_pos = self.config.get("overlay_position", "Bottom-Right")
+        self.pos_combo.setCurrentText(current_pos)
+        self.pos_combo.currentTextChanged.connect(self.on_position_changed)
+        pos_layout.addWidget(self.pos_combo)
+        settings_layout.addLayout(pos_layout)
+        
         # Check for Updates Button
         self.update_btn = QPushButton("Check for Updates")
         self.update_btn.clicked.connect(self.manual_update_check)
@@ -587,6 +605,7 @@ class SettingsDialog(QDialog):
         self.startup_checkbox.blockSignals(True)
         self.autoupdate_checkbox.blockSignals(True)
         self.font_combo.blockSignals(True)
+        self.pos_combo.blockSignals(True)
         
         # 1. Hotkey
         hotkey = self.config.get("trigger_keyboard", "")
@@ -613,9 +632,14 @@ class SettingsDialog(QDialog):
             self.font_combo.setCurrentIndex(0)
             self.config["font_family"] = available_fonts[0]
             
+        # 6. Overlay Position
+        current_pos = self.config.get("overlay_position", "Bottom-Right")
+        self.pos_combo.setCurrentText(current_pos)
+            
         self.startup_checkbox.blockSignals(False)
         self.autoupdate_checkbox.blockSignals(False)
         self.font_combo.blockSignals(False)
+        self.pos_combo.blockSignals(False)
 
     def refresh_stats_ui(self):
         stats = self.config.get("stats", {})
@@ -801,6 +825,10 @@ class SettingsDialog(QDialog):
 
     def on_font_changed(self, text):
         self.config["font_family"] = text
+        self.save_config()
+
+    def on_position_changed(self, text):
+        self.config["overlay_position"] = text
         self.save_config()
 
     def manual_update_check(self):

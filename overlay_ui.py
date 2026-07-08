@@ -45,6 +45,7 @@ class SebhaOverlay(QWidget):
                             self.loaded_font_families.append(families[0])
                             
         self.font_family = ""
+        self.overlay_position = "Bottom-Right"
             
         self.count = 0
         self.zikr = "سبحان الله"
@@ -147,6 +148,7 @@ class SebhaOverlay(QWidget):
                     self.zikr = data.get("zikr", "سبحان الله")
                     self.azkar_list = data.get("azkar_list", ["سبحان الله"])
                     self.font_family = data.get("font_family", "Default")
+                    self.overlay_position = data.get("overlay_position", "Bottom-Right")
                     if "stats" in data:
                         self.stats = data["stats"]
                         
@@ -189,6 +191,7 @@ class SebhaOverlay(QWidget):
                     "zikr": self.zikr,
                     "azkar_list": self.azkar_list,
                     "font_family": self.font_family,
+                    "overlay_position": self.overlay_position,
                     "stats": self.stats
                 })
                 json.dump(current_data, f, ensure_ascii=False, indent=4)
@@ -512,9 +515,27 @@ class SebhaOverlay(QWidget):
 
     def apply_geometry(self, target_width, target_height):
         screen = self.screen().availableGeometry()
-        x = screen.width() - target_width - 30
-        y = screen.height() - target_height - 40
+        pos_setting = getattr(self, "overlay_position", "Bottom-Right")
         
+        if pos_setting == "Top-Left":
+            x = screen.x() + 30
+            y = screen.y() + 40
+        elif pos_setting == "Top-Center":
+            x = screen.x() + (screen.width() - target_width) // 2
+            y = screen.y() + 40
+        elif pos_setting == "Top-Right":
+            x = screen.x() + screen.width() - target_width - 30
+            y = screen.y() + 40
+        elif pos_setting == "Bottom-Left":
+            x = screen.x() + 30
+            y = screen.y() + screen.height() - target_height - 40
+        elif pos_setting == "Bottom-Center":
+            x = screen.x() + (screen.width() - target_width) // 2
+            y = screen.y() + screen.height() - target_height - 40
+        else: # Bottom-Right (default)
+            x = screen.x() + screen.width() - target_width - 30
+            y = screen.y() + screen.height() - target_height - 40
+            
         target_rect = QRect(x, y, target_width, target_height)
         
         if self.isVisible() and self.geometry() != target_rect:

@@ -28,6 +28,7 @@ DEFAULT_CONFIG = {
     "trigger_keyboard": "",
     "auto_update": True,
     "font_family": "Default",
+    "overlay_position": "Bottom-Right",
     "stats": {
         "total_free_clicks": 0,
         "morning_sessions_completed": 0,
