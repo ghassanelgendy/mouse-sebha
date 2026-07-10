@@ -403,7 +403,7 @@ class SebhaOverlay(QWidget):
         self.update_ui_state()
         self.hide_options_bar()
 
-    def update_ui_state(self):
+    def update_ui_state(self, animate=True):
         is_hovered = self.is_cursor_inside()
         
         if self.mode == 'FREE':
@@ -511,10 +511,16 @@ class SebhaOverlay(QWidget):
             min_height = 220
             
         target_height = max(min_height, target_height)
-        self.apply_geometry(target_width, target_height)
+        self.apply_geometry(target_width, target_height, animate=animate)
 
-    def apply_geometry(self, target_width, target_height):
-        screen = self.screen().availableGeometry()
+    def apply_geometry(self, target_width, target_height, animate=True):
+        cursor_pos = self.cursor().pos()
+        screen_obj = QApplication.screenAt(cursor_pos)
+        if not screen_obj:
+            screen_obj = self.screen()
+        if not screen_obj:
+            screen_obj = QApplication.primaryScreen()
+        screen = screen_obj.availableGeometry()
         pos_setting = getattr(self, "overlay_position", "Bottom-Right")
         
         if pos_setting == "Top-Left":
@@ -538,7 +544,7 @@ class SebhaOverlay(QWidget):
             
         target_rect = QRect(x, y, target_width, target_height)
         
-        if self.isVisible() and self.geometry() != target_rect:
+        if animate and self.isVisible() and self.geometry() != target_rect:
             self.anim.stop()
             self.anim.setStartValue(self.geometry())
             self.anim.setEndValue(target_rect)
@@ -753,6 +759,10 @@ class SebhaOverlay(QWidget):
         self.hide_options_bar()
         self.hide_timer.start()
         super().leaveEvent(event)
+
+    def showEvent(self, event):
+        self.update_ui_state(animate=False)
+        super().showEvent(event)
         
     def wheelEvent(self, event):
         if self.is_cursor_inside():

@@ -163,16 +163,54 @@ def apply_update_and_restart(new_exe_path):
 $LogPath = Join-Path $env:TEMP "sebha_update.log"
 "Starting update. Parent PID: {current_pid}" | Out-File $LogPath
 try {{
+    # Try to stop parent process if it is still running
     $proc = Get-Process -Id {current_pid} -ErrorAction SilentlyContinue
     if ($proc) {{
         "Stopping parent process {current_pid}..." | Out-File $LogPath -Append
         Stop-Process -Id {current_pid} -Force -ErrorAction SilentlyContinue
-        Start-Sleep -Seconds 2
     }}
+    
+    # Wait for the process to exit completely
+    $limit = 10
+    while ((Get-Process -Id {current_pid} -ErrorAction SilentlyContinue) -and ($limit -gt 0)) {{
+        "Waiting for parent process to exit..." | Out-File $LogPath -Append
+        Start-Sleep -Seconds 1
+        $limit--
+    }}
+    
+    # Retry loop to remove the old executable
     "Removing old executable: {current_exe}" | Out-File $LogPath -Append
-    Remove-Item -Force "{current_exe}" -ErrorAction Stop
+    $deleted = $false
+    for ($i = 0; $i -lt 10; $i++) {{
+        try {{
+            Remove-Item -Force "{current_exe}" -ErrorAction Stop
+            $deleted = $true
+            break
+        }} catch {{
+            "Deletion attempt $($i+1) failed: $($_.Exception.Message). Retrying..." | Out-File $LogPath -Append
+            Start-Sleep -Seconds 1
+        }}
+    }}
+    if (-not $deleted) {{
+        throw "Failed to delete old executable after 10 attempts."
+    }}
+    
+    # Retry loop to move the new executable
     "Moving new executable {new_exe_path} to {current_exe}" | Out-File $LogPath -Append
-    Move-Item -Force "{new_exe_path}" "{current_exe}" -ErrorAction Stop
+    $moved = $false
+    for ($i = 0; $i -lt 5; $i++) {{
+        try {{
+            Move-Item -Force "{new_exe_path}" "{current_exe}" -ErrorAction Stop
+            $moved = $true
+            break
+        }} catch {{
+            "Move attempt $($i+1) failed: $($_.Exception.Message). Retrying..." | Out-File $LogPath -Append
+            Start-Sleep -Seconds 1
+        }}
+    }}
+    if (-not $moved) {{
+        throw "Failed to move new executable after 5 attempts."
+    }}
     
     "Cleaning environment variables..." | Out-File $LogPath -Append
     Remove-Item env:_MEIPASS -ErrorAction SilentlyContinue
