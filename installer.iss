@@ -1,5 +1,5 @@
 #define AppName "Sebha"
-#define AppVersion "v1.0.21"
+#define AppVersion "v1.0.22"
 #define AppPublisher "Ghassan Elgendy"
 #define AppURL "https://github.com/ghassanelgendy/mouse-sebha"
 #define AppExeName "Sebha.exe"
