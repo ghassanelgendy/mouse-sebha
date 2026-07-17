@@ -73,6 +73,8 @@ class SebhaOverlay(QWidget):
         self.anim.setDuration(250)
         self.anim.setEasingCurve(QEasingCurve.Type.OutQuad)
 
+        self.is_bg_light = False
+
         self.initUI()
 
         # Setup persistent opacity animation for smooth transitions
@@ -87,6 +89,9 @@ class SebhaOverlay(QWidget):
         self.hover_timer = QTimer(self)
         self.hover_timer.setInterval(100)
         self.hover_timer.timeout.connect(self.check_hover_zones)
+
+        # Detect initial background brightness
+        self.detect_background_brightness()
 
         # Warm up styles, layouts, and fonts to prevent lag on first hover
         self.warm_up()
@@ -544,6 +549,9 @@ class SebhaOverlay(QWidget):
             
         target_rect = QRect(x, y, target_width, target_height)
         
+        if self.geometry() != target_rect:
+            self.detect_background_brightness(x, y, target_width, target_height)
+            
         if animate and self.isVisible() and self.geometry() != target_rect:
             self.anim.stop()
             self.anim.setStartValue(self.geometry())
@@ -698,6 +706,11 @@ class SebhaOverlay(QWidget):
         self.hide_timer.start()
         if self.fade_anim.state() == QPropertyAnimation.State.Running and self.fade_anim.endValue() == 1.0:
             return
+            
+        # Detect background brightness before making it visible
+        if not self.isVisible() or self.opacity_effect.opacity() < 0.1:
+            self.detect_background_brightness()
+
         if not self.isVisible():
             self.opacity_effect.setOpacity(0.0)
             self.show()
@@ -798,3 +811,136 @@ class SebhaOverlay(QWidget):
                     self.benefit_label.setText("")
                     self.show_overlay()
                 self.transition_to_zikr(perform_change)
+
+    def detect_background_brightness(self, x=None, y=None, width=None, height=None):
+        if x is not None and y is not None and width is not None and height is not None:
+            target_width = width
+            target_height = height
+            target_x = x
+            target_y = y
+        else:
+            target_rect = self.geometry()
+            target_width = target_rect.width()
+            target_height = target_rect.height()
+            target_x = target_rect.x()
+            target_y = target_rect.y()
+            if target_width <= 0 or target_height <= 0:
+                target_width = 400 if self.mode == 'FREE' else 500
+                target_height = 160 if self.mode == 'FREE' else 220
+                
+        # Grab background only for the self.upper_widget area (which holds the buttons)
+        grab_x = target_x + 15
+        grab_y = target_y + 15
+        grab_width = max(10, target_width - 30)
+        grab_height = 40
+        
+        cursor_pos = self.cursor().pos()
+        screen_obj = QApplication.screenAt(cursor_pos)
+        if not screen_obj:
+            screen_obj = self.screen()
+        if not screen_obj:
+            screen_obj = QApplication.primaryScreen()
+            
+        was_visible = self.isVisible()
+        if was_visible:
+            self.setWindowOpacity(0.0)
+            QApplication.processEvents()
+            
+        pixmap = screen_obj.grabWindow(0, grab_x, grab_y, grab_width, grab_height)
+        
+        if was_visible:
+            self.setWindowOpacity(1.0)
+            
+        if not pixmap.isNull():
+            scaled_img = pixmap.toImage().scaled(1, 1, Qt.AspectRatioMode.IgnoreAspectRatio, Qt.TransformationMode.SmoothTransformation)
+            color = scaled_img.pixelColor(0, 0)
+            brightness = 0.299 * color.red() + 0.587 * color.green() + 0.114 * color.blue()
+            self.is_bg_light = brightness > 150
+        else:
+            self.is_bg_light = False
+            
+        self.update_button_styles()
+
+    def update_button_styles(self):
+        is_light = getattr(self, "is_bg_light", False)
+        
+        if is_light:
+            bg_color = "rgba(20, 20, 20, 200)"
+            hover_bg_color = "rgba(50, 50, 50, 220)"
+            border_color = "rgba(255, 255, 255, 30)"
+            text_color = "white"
+            
+            exit_bg = "rgba(180, 40, 40, 200)"
+            exit_hover = "rgba(210, 60, 60, 220)"
+        else:
+            bg_color = "rgba(255, 255, 255, 40)"
+            hover_bg_color = "rgba(255, 255, 255, 80)"
+            border_color = "rgba(255, 255, 255, 20)"
+            text_color = "white"
+            
+            exit_bg = "rgba(255, 80, 80, 80)"
+            exit_hover = "rgba(255, 80, 80, 120)"
+            
+        style = f"""
+            QPushButton {{
+                background-color: {bg_color};
+                color: {text_color};
+                border-radius: 17px;
+                min-width: 34px;
+                max-width: 34px;
+                min-height: 34px;
+                max-height: 34px;
+                padding: 0px;
+                font-weight: bold;
+                border: 1px solid {border_color};
+            }}
+            QPushButton:hover {{
+                background-color: {hover_bg_color};
+            }}
+        """
+        
+        trigger_border = "rgba(255, 255, 255, 30)"
+        trigger_style = f"""
+            QPushButton {{
+                background-color: {bg_color if is_light else "rgba(30, 30, 30, 180)"};
+                color: {text_color};
+                border-radius: 17px;
+                min-width: 34px;
+                max-width: 34px;
+                min-height: 34px;
+                max-height: 34px;
+                padding: 0px;
+                border: 1px solid {trigger_border};
+            }}
+            QPushButton:hover {{
+                background-color: {hover_bg_color if is_light else "rgba(255, 255, 255, 40)"};
+                border: 1px solid rgba(255, 255, 255, 60);
+            }}
+        """
+        
+        exit_style = f"""
+            QPushButton {{
+                background-color: {exit_bg};
+                color: {text_color};
+                border-radius: 17px;
+                min-width: 34px;
+                max-width: 34px;
+                min-height: 34px;
+                max-height: 34px;
+                padding: 0px;
+                font-weight: bold;
+                border: 1px solid {border_color};
+            }}
+            QPushButton:hover {{
+                background-color: {exit_hover};
+            }}
+        """
+        
+        self.trigger_circle.setStyleSheet(trigger_style)
+        self.back_btn.setStyleSheet(style)
+        self.morning_btn.setStyleSheet(style)
+        self.night_btn.setStyleSheet(style)
+        self.reset_btn.setStyleSheet(style)
+        self.hide_btn.setStyleSheet(style)
+        self.next_btn.setStyleSheet(style)
+        self.exit_btn.setStyleSheet(exit_style)
