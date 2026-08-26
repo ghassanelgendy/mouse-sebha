@@ -10,7 +10,7 @@
         "أستغفر الله",
         "لا اله الا الله وحده لا شريك له له الملك وله الحمد وهو على كل شيء قدير"
     ],
-    "trigger_mouse": "",
+    "trigger_mouse": "Button.x2",
     "trigger_keyboard": "Key.ctrl_r",
     "stats": {
         "total_free_clicks": 789,

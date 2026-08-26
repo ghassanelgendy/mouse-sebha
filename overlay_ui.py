@@ -2,7 +2,7 @@ import os
 import json
 import sys
 from PyQt6.QtWidgets import QApplication, QWidget, QVBoxLayout, QLabel, QPushButton, QHBoxLayout, QSpacerItem, QSizePolicy, QGraphicsOpacityEffect
-from PyQt6.QtCore import Qt, QTimer, QPoint, QRect, QPropertyAnimation, QEasingCurve
+from PyQt6.QtCore import Qt, QTimer, QPoint, QRect, QPropertyAnimation, QEasingCurve, pyqtSignal
 from PyQt6.QtGui import QColor, QPalette, QFont, QFontDatabase
 
 from config_path import CONFIG_PATH
@@ -25,6 +25,8 @@ class HoverAreaWidget(QWidget):
         painter.fillRect(self.rect(), QColor(0, 0, 0, 1))
 
 class SebhaOverlay(QWidget):
+    open_settings_requested = pyqtSignal()
+
     def __init__(self):
         super().__init__()
         
@@ -380,10 +382,26 @@ class SebhaOverlay(QWidget):
         self.next_btn.setStyleSheet(self.btn_style)
         self.next_btn.clicked.connect(self.prev_zikr) # Right button moves backward (prev)
 
+        self.settings_btn = QPushButton("⚙️")
+        self.settings_btn.setFont(self.get_english_font(12, True))
+        self.settings_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.settings_btn.setStyleSheet(self.btn_style)
+        self.settings_btn.clicked.connect(self.open_settings_requested.emit)
+
+        self.trigger_circle.clicked.connect(self.open_settings_requested.emit)
+
+        self.hadith_btn = QPushButton("📖")
+        self.hadith_btn.setFont(self.get_arabic_font(12, True))
+        self.hadith_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.hadith_btn.setStyleSheet(self.btn_style)
+        self.hadith_btn.clicked.connect(lambda: self.start_session('HADITH'))
+
         options_layout.addWidget(self.back_btn)
         options_layout.addWidget(self.morning_btn)
         options_layout.addWidget(self.night_btn)
+        options_layout.addWidget(self.hadith_btn)
         options_layout.addWidget(self.reset_btn)
+        options_layout.addWidget(self.settings_btn)
         options_layout.addWidget(self.exit_btn)
         options_layout.addWidget(self.hide_btn)
         options_layout.addWidget(self.next_btn)
@@ -592,10 +610,48 @@ class SebhaOverlay(QWidget):
             self.show_overlay()
         self.transition_to_zikr(perform_change)
 
+    def show_hadith_notification(self, hadith_item=None):
+        if not hadith_item:
+            hadiths = self.db.get("hadith", [])
+            if not hadiths:
+                return
+            import random
+            hadith_item = random.choice(hadiths[:min(100, len(hadiths))])
+
+        def perform_change():
+            text = hadith_item.get("text", "")
+            benefit = hadith_item.get("benefit", "")
+            
+            font_size = self.get_dynamic_font_size(text, 16)
+            self.zikr_label.setText(text)
+            self.zikr_label.setFont(self.get_arabic_font(font_size, True))
+            
+            if benefit:
+                self.benefit_label.setText(f"📖 {benefit}")
+                self.benefit_label.setFont(self.get_arabic_font(max(12, font_size - 4), False))
+                self.benefit_label.setVisible(True)
+            else:
+                self.benefit_label.setVisible(False)
+                
+            self.count_label.setText("حديث شريف")
+            self.count_label.setStyleSheet("color: #FF9800;")
+            self.count_label.setVisible(True)
+            
+            self.show_overlay()
+
+        self.transition_to_zikr(perform_change)
+
     def is_overlay_hidden(self):
         return (not self.isVisible() or 
                 self.opacity_effect.opacity() == 0.0 or 
                 (self.fade_anim.state() == QPropertyAnimation.State.Running and self.fade_anim.endValue() == 0.0))
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            self.increment_count()
+            event.accept()
+        else:
+            super().mousePressEvent(event)
 
     def increment_count(self):
         if self.is_overlay_hidden():
@@ -698,7 +754,7 @@ class SebhaOverlay(QWidget):
     def update_hide_timer_interval(self):
         text = self.zikr_label.text()
         char_count = len(text) if text else 0
-        interval = max(3000, min(15000, 3000 + char_count * 75))
+        interval = max(4000, min(8000, 4000 + char_count * 30))
         self.hide_timer.setInterval(interval)
 
     def show_overlay(self):
@@ -727,6 +783,9 @@ class SebhaOverlay(QWidget):
             self.fade_anim.setStartValue(self.opacity_effect.opacity())
             self.fade_anim.setEndValue(0.0)
             self.fade_anim.start()
+        else:
+            # If mouse is actually inside, defer hiding
+            self.hide_timer.start()
 
     def hide_overlay_instantly(self):
         self.hide_timer.stop()
@@ -746,7 +805,7 @@ class SebhaOverlay(QWidget):
         else:
             self.hover_timer.stop()
             self.hide_options_bar()
-            if not self.hide_timer.isActive() and not self.is_overlay_hidden():
+            if not self.is_overlay_hidden():
                 self.hide_timer.start()
 
     def show_options_bar(self):

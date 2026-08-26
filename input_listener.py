@@ -30,32 +30,82 @@ class InputListener:
     def reload(self):
         self.load_config()
 
+    def _match_mouse(self, button):
+        if not self.trigger_mouse:
+            return False
+        
+        target = str(self.trigger_mouse).strip("'\"").lower()
+        sb = str(button).strip("'\"").lower()
+        
+        if sb == target or str(button).lower() == target:
+            return True
+            
+        if hasattr(button, 'name') and button.name:
+            bn = str(button.name).lower()
+            if bn == target or f"button.{bn}" == target:
+                return True
+                
+        return False
+
     def on_click(self, x, y, button, pressed):
-        if pressed:
-            if str(button) == self.trigger_mouse:
-                self.signals.triggered.emit()
+        if pressed and self._match_mouse(button):
+            self.signals.triggered.emit()
+
+    def _match_key(self, key):
+        if not self.trigger_keyboard:
+            return False
+        
+        target = str(self.trigger_keyboard).strip("'\"").lower()
+        
+        # Check string representation (e.g. "key.f2", "key.space", "a")
+        sk = str(key).strip("'\"").lower()
+        if sk == target or str(key).lower() == target:
+            return True
+            
+        # Check key.name attribute if available (e.g. 'f2', 'space', 'esc')
+        if hasattr(key, 'name') and key.name:
+            kn = str(key.name).lower()
+            if kn == target or f"key.{kn}" == target:
+                return True
+                
+        # Check key.char attribute if available (e.g. 'a', 'b', '1')
+        try:
+            if key.char and str(key.char).lower() == target:
+                return True
+        except AttributeError:
+            pass
+            
+        # Space key matching
+        if target in ("space", "key.space", " ") and (sk in ("space", "key.space") or getattr(key, 'char', None) == ' '):
+            return True
+            
+        return False
 
     def on_press(self, key):
-        # Determine string representation of key
-        try:
-            k = key.char
-            if k is None:
-                k = str(key)
-        except AttributeError:
-            k = str(key)
-            
-        if self.trigger_keyboard and (k == self.trigger_keyboard or str(key) == self.trigger_keyboard):
+        if self._match_key(key):
             self.signals.triggered.emit()
 
     def start(self):
-        self.mouse_listener = mouse.Listener(on_click=self.on_click)
-        self.mouse_listener.start()
+        try:
+            self.mouse_listener = mouse.Listener(on_click=self.on_click)
+            self.mouse_listener.start()
+        except Exception as e:
+            print("Warning: Could not start mouse listener:", e)
         
-        self.keyboard_listener = keyboard.Listener(on_press=self.on_press)
-        self.keyboard_listener.start()
+        try:
+            self.keyboard_listener = keyboard.Listener(on_press=self.on_press)
+            self.keyboard_listener.start()
+        except Exception as e:
+            print("Warning: Could not start keyboard listener:", e)
 
     def stop(self):
         if self.mouse_listener:
-            self.mouse_listener.stop()
+            try:
+                self.mouse_listener.stop()
+            except Exception:
+                pass
         if self.keyboard_listener:
-            self.keyboard_listener.stop()
+            try:
+                self.keyboard_listener.stop()
+            except Exception:
+                pass

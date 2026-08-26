@@ -5,7 +5,7 @@ import subprocess
 from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel, 
                              QPushButton, QTabWidget, QWidget, QCheckBox,
                              QListWidget, QLineEdit, QMessageBox, QApplication,
-                             QComboBox, QListWidgetItem)
+                             QComboBox, QListWidgetItem, QSpinBox)
 from PyQt6.QtCore import Qt, pyqtSignal, QRect, QThread
 from PyQt6.QtGui import QPainter, QColor, QFont
 from pynput import mouse, keyboard
@@ -444,8 +444,8 @@ class SettingsDialog(QDialog):
         
         settings_layout.addLayout(trigger_layout)
         
-        # Startup Settings
-        self.startup_checkbox = QCheckBox("Run at Windows Startup")
+        startup_label = "Run at Windows Startup" if sys.platform == "win32" else "Run at System Startup"
+        self.startup_checkbox = QCheckBox(startup_label)
         self.startup_checkbox.setChecked(self.check_startup())
         self.startup_checkbox.toggled.connect(self.toggle_startup)
         settings_layout.addWidget(self.startup_checkbox)
@@ -455,6 +455,27 @@ class SettingsDialog(QDialog):
         self.autoupdate_checkbox.setChecked(self.config.get("auto_update", True))
         self.autoupdate_checkbox.toggled.connect(self.toggle_autoupdate)
         settings_layout.addWidget(self.autoupdate_checkbox)
+        
+        # System Tray Icon Settings
+        self.tray_checkbox = QCheckBox("Show System Tray Icon")
+        self.tray_checkbox.setChecked(self.config.get("show_tray_icon", True))
+        self.tray_checkbox.toggled.connect(self.toggle_tray_icon)
+        settings_layout.addWidget(self.tray_checkbox)
+        
+        # Hadith Reminder Settings
+        hadith_group = QHBoxLayout()
+        self.hadith_checkbox = QCheckBox("Enable Periodic Hadith Reminders")
+        self.hadith_checkbox.setChecked(self.config.get("hadith_reminder_enabled", True))
+        self.hadith_checkbox.toggled.connect(self.toggle_hadith_reminder)
+        hadith_group.addWidget(self.hadith_checkbox)
+        
+        hadith_group.addWidget(QLabel("Interval (min):"))
+        self.hadith_spinbox = QSpinBox()
+        self.hadith_spinbox.setRange(5, 720)
+        self.hadith_spinbox.setValue(self.config.get("hadith_reminder_interval", 30))
+        self.hadith_spinbox.valueChanged.connect(self.on_hadith_interval_changed)
+        hadith_group.addWidget(self.hadith_spinbox)
+        settings_layout.addLayout(hadith_group)
         
         # Font Settings
         font_layout = QHBoxLayout()
@@ -806,59 +827,43 @@ class SettingsDialog(QDialog):
             self.save_config()
 
     def check_startup(self):
-        if sys.platform != "win32":
-            return False
-        try:
-            import winreg
-            key_path = r"Software\Microsoft\Windows\CurrentVersion\Run"
-            key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, key_path, 0, winreg.KEY_READ)
+        if sys.platform == "win32":
             try:
-                val, _ = winreg.QueryValueEx(key, "Sebha")
-                return True
-            except FileNotFoundError:
+                import winreg
+                key_path = r"Software\Microsoft\Windows\CurrentVersion\Run"
+                key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, key_path, 0, winreg.KEY_READ)
+                try:
+                    val, _ = winreg.QueryValueEx(key, "Sebha")
+                    return True
+                except FileNotFoundError:
+                    return False
+                finally:
+                    winreg.CloseKey(key)
+            except Exception:
                 return False
-            finally:
-                winreg.CloseKey(key)
-        except Exception:
-            return False
+        elif sys.platform.startswith("linux"):
+            desktop_file = os.path.expanduser("~/.config/autostart/sebha.desktop")
+            return os.path.exists(desktop_file)
+        return False
 
     def toggle_startup(self, checked):
-        if sys.platform != "win32":
-            return
-        
-        # Clean up old shortcut if it exists to avoid duplicate launches
-        try:
-            startup_dir = os.path.join(os.environ.get('APPDATA', ''), r'Microsoft\Windows\Start Menu\Programs\Startup')
-            shortcut_path = os.path.join(startup_dir, 'Sebha.lnk')
-            if os.path.exists(shortcut_path):
-                os.remove(shortcut_path)
-        except Exception:
-            pass
-
-        try:
-            import winreg
-            key_path = r"Software\Microsoft\Windows\CurrentVersion\Run"
-            key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, key_path, 0, winreg.KEY_SET_VALUE)
-            if checked:
-                if getattr(sys, 'frozen', False):
-                    exe_path = sys.executable
-                    cmd = f'"{exe_path}"'
-                else:
-                    pythonw_exe = os.path.join(os.path.dirname(sys.executable), 'pythonw.exe')
-                    script_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'main.pyw')
-                    cmd = f'"{pythonw_exe}" "{script_path}"'
-                winreg.SetValueEx(key, "Sebha", 0, winreg.REG_SZ, cmd)
-            else:
-                try:
-                    winreg.DeleteValue(key, "Sebha")
-                except FileNotFoundError:
-                    pass
-            winreg.CloseKey(key)
-        except Exception as e:
-            print("Error toggling startup:", e)
+        from install_startup import configure_startup
+        configure_startup(enable=checked)
 
     def toggle_autoupdate(self, checked):
         self.config["auto_update"] = checked
+        self.save_config()
+
+    def toggle_tray_icon(self, checked):
+        self.config["show_tray_icon"] = checked
+        self.save_config()
+
+    def toggle_hadith_reminder(self, checked):
+        self.config["hadith_reminder_enabled"] = checked
+        self.save_config()
+
+    def on_hadith_interval_changed(self, val):
+        self.config["hadith_reminder_interval"] = val
         self.save_config()
 
     def on_font_changed(self, text):
