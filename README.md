@@ -7,6 +7,9 @@
   <a href="https://github.com/ghassanelgendy/mouse-sebha/releases/latest/download/Sebha-Windows-Setup.exe">
     <img src="https://img.shields.io/badge/Download-Windows-blue?style=for-the-badge&logo=windows&logoColor=white" alt="Download for Windows" />
   </a>
+  <a href="https://github.com/ghassanelgendy/mouse-sebha/releases/latest/download/Sebha-Linux.deb">
+    <img src="https://img.shields.io/badge/Download-Ubuntu%20%28.deb%29-orange?style=for-the-badge&logo=ubuntu&logoColor=white" alt="Download for Ubuntu (.deb)" />
+  </a>
   <a href="https://github.com/ghassanelgendy/mouse-sebha/releases/latest/download/Sebha-Linux">
     <img src="https://img.shields.io/badge/Download-Linux-orange?style=for-the-badge&logo=linux&logoColor=white" alt="Download for Linux" />
   </a>
@@ -47,21 +50,37 @@
 
 ## 🛠️ التثبيت والتشغيل
 
-### المتطلبات الأساسية
-تأكد من تثبيت بايثون 3.10 أو أحدث على جهازك.
+### 🐧 التثبيت على أوبونتو / لينكس (Ubuntu / Debian / Linux)
 
-### 1. تثبيت المكتبات المطلوبة
-قم بنسخ المستودع، وانتقل إلى المجلد، ثم قم بتثبيت الحزم المطلوبة:
-```bash
-pip install -r requirements.txt
-```
+#### الخيار 1: التثبيت عبر حزمة Debian المباشرة (الأسهل لأوبونتو)
+1. قم بتحميل الملف `Sebha-Linux.deb` من قائمة [الإصدارات (Releases)](https://github.com/ghassanelgendy/mouse-sebha/releases).
+2. انقر مزدوجاً على الملف لتثبيته مباشرة، أو نفذ الأمر التالي في الطرفية (Terminal):
+   ```bash
+   sudo apt install ./Sebha-Linux.deb
+   ```
+3. ستظهر السبحة في قائمة التطبيقات (Applications Menu) مع الأيقونة وتعمل كأي تطبيق عادي.
 
-### 2. تشغيل التطبيق
-ابدأ العملية في الخلفية:
+#### الخيار 2: استخدام ملف التنفيذ والسكربت المدمج
+إذا قمت بتحميل الملف التنفيذي المباشر `Sebha-Linux`:
 ```bash
-pythonw main.pyw
+chmod +x Sebha-Linux
+./install.sh
 ```
-*(استخدام `pythonw` يجعل البرنامج يعمل كعملية خلفية دون ظهور نافذة سطر الأوامر).*
+أو تشغيله المباشر: `./Sebha-Linux`
+
+#### الخيار 3: التشغيل والتثبيت من المصدر (Python Source / Repository)
+1. تثبيت بايثون ومكتبات النظام الحزمية المطلوبة:
+   ```bash
+   sudo apt update && sudo apt install -y python3 python3-pip libxcb-cursor0 libxcb-xinerama0 libxkbcommon-x11-0 libgl1
+   ```
+2. التثبيت التلقائي وإنشاء اختصار التطبيق في قائمة البرامج:
+   ```bash
+   bash install.sh
+   ```
+   أو تشغيل التطبيق مباشرة: `python3 main.pyw`
+
+### 💻 التثبيت على ويندوز (Windows)
+حمل ملف التثبيت المباشر `Sebha-Windows-Setup.exe` وانقر عليه للتثبيت الفوري.
 
 ---
 
@@ -103,21 +122,44 @@ Designed to stay completely out of your way as a background process (no taskbar 
 
 ## 🛠️ Installation & Setup
 
-### Prerequisites
-Make sure you have Python 3.10+ installed on your system.
+### 🐧 Installing on Ubuntu / Debian / Linux
 
-### 1. Install Dependencies
-Clone this repository, navigate to the folder, and install the required packages:
-```bash
-pip install -r requirements.txt
-```
+#### Option 1: Debian Package (.deb) - Recommended for Ubuntu
+1. Download `Sebha-Linux.deb` from the [Releases](https://github.com/ghassanelgendy/mouse-sebha/releases) page.
+2. Double-click the file to install via Ubuntu Software / App Center, or run in Terminal:
+   ```bash
+   sudo apt install ./Sebha-Linux.deb
+   ```
+3. Launch `Sebha` directly from your Applications menu.
 
-### 2. Run the Application
-Start the background process:
-```bash
-pythonw main.pyw
-```
-*(Using `pythonw` runs it as a background task, keeping your command prompt free and avoiding a command window popup).*
+#### Option 2: Standalone Executable Binary
+If you downloaded `Sebha-Linux` executable:
+1. Grant execution permissions:
+   ```bash
+   chmod +x Sebha-Linux
+   ```
+2. Run the interactive installer script to set up application menu shortcuts:
+   ```bash
+   ./install.sh
+   ```
+   Or run the binary directly: `./Sebha-Linux`
+
+#### Option 3: Run / Install from Python Source Repository
+1. Install Python 3 and system Qt/XCB dependencies:
+   ```bash
+   sudo apt update && sudo apt install -y python3 python3-pip libxcb-cursor0 libxcb-xinerama0 libxkbcommon-x11-0 libgl1
+   ```
+2. Run installer script to install Python dependencies and set up the Application Menu desktop shortcut:
+   ```bash
+   bash install.sh
+   ```
+   Or launch directly using python:
+   ```bash
+   python3 main.pyw
+   ```
+
+### 💻 Installing on Windows
+Download `Sebha-Windows-Setup.exe` from Releases and run the setup wizard.
 
 ---
 
