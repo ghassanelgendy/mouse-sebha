@@ -114,6 +114,53 @@ jobs:
       run: |
         "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" /Odist installer.iss
 
+    - name: Build Debian Package (Linux only)
+      if: matrix.os == 'ubuntu-latest'
+      shell: bash
+      run: |
+        TAG_NAME="${{ needs.tag.outputs.new_tag }}"
+        VER_NUM="${TAG_NAME#v}"
+        mkdir -p deb_pkg/DEBIAN
+        mkdir -p deb_pkg/usr/bin
+        mkdir -p deb_pkg/usr/share/applications
+        mkdir -p deb_pkg/usr/share/icons/hicolor/256x256/apps
+        
+        cp dist/Sebha-Linux deb_pkg/usr/bin/sebha
+        chmod 755 deb_pkg/usr/bin/sebha
+        
+        if [ -f assets/logo.png ]; then
+          cp assets/logo.png deb_pkg/usr/share/icons/hicolor/256x256/apps/sebha.png
+        fi
+
+        cat << EOF > deb_pkg/DEBIAN/control
+Package: sebha
+Version: ${VER_NUM}
+Section: utils
+Priority: optional
+Architecture: amd64
+Depends: libxcb-cursor0, libxcb-xinerama0, libxkbcommon-x11-0, libgl1
+Maintainer: Ghassan Elgendy
+Description: Mouse Sebha - Smart Athkar companion overlay for Linux
+ A lightweight background application that functions as a smart Sebha
+ and Athkar companion.
+EOF
+
+        cat << 'EOF' > deb_pkg/usr/share/applications/sebha.desktop
+[Desktop Entry]
+Name=Sebha
+Comment=Mouse Sebha - Athkar companion overlay
+Exec=/usr/bin/sebha
+Icon=sebha
+Terminal=false
+Type=Application
+Categories=Utility;
+X-GNOME-Autostart-enabled=true
+EOF
+
+        chmod 644 deb_pkg/usr/share/applications/sebha.desktop
+
+        dpkg-deb --build deb_pkg dist/Sebha-Linux.deb
+
     - name: Upload Build Artifacts
       uses: actions/upload-artifact@v4
       with:
@@ -121,6 +168,7 @@ jobs:
         path: |
           dist/${{ matrix.artifact_name }}
           dist/Sebha-Windows-Setup.exe
+          dist/Sebha-Linux.deb
         if-no-files-found: ignore
 
   publish:
@@ -153,7 +201,7 @@ jobs:
         if [ -z "$prev_tag" ]; then
           git log --pretty=format:"* %s (%h)" >> changelog.md
         else
-          git log ${prev_tag}..${current_tag} --pretty=format:"* %s (%h)" >> changelog.md
+          git log ${prev_tag}..${current_tag} >> changelog.md
         fi
         echo "" >> changelog.md
         cat changelog.md
@@ -170,6 +218,7 @@ jobs:
           release-assets/sebha-build-Windows/Sebha-Windows.exe
           release-assets/sebha-build-Windows/Sebha-Windows-Setup.exe
           release-assets/sebha-build-Linux/Sebha-Linux
+          release-assets/sebha-build-Linux/Sebha-Linux.deb
           release-assets/sebha-build-macOS/Sebha-macOS
         fail_on_unmatched_files: true
         tag_name: ${{ needs.tag.outputs.new_tag }}
