@@ -20,6 +20,15 @@ def _strip_emojis(text: str) -> str:
     cleaned = EMOJI_PATTERN.sub("", text)
     return re.sub(r" +", " ", cleaned).strip()
 
+def _clean_text(text: str) -> str:
+    if not text:
+        return ""
+    cleaned = _strip_emojis(text)
+    # Remove any accidental empty parentheses '()' or '( )' or '[]'
+    cleaned = re.sub(r'\(\s*\)', '', cleaned)
+    cleaned = re.sub(r'\[\s*\]', '', cleaned)
+    return re.sub(r" +", " ", cleaned).strip()
+
 def _to_rtl(text: str) -> str:
     """
     Ensures every line in a string starts with a Right-to-Left Mark (RLM),
@@ -39,13 +48,18 @@ def _to_rtl(text: str) -> str:
             rtl_lines.append("")
     return "\n".join(rtl_lines)
 
+def _to_int(val, default=None):
+    if val is None:
+        return default
+    try:
+        return int(val)
+    except (ValueError, TypeError):
+        return default
+
 # Try initializing libnotify (GIR Notify)
 _libnotify_available = False
 _Notify = None
 _GLib = None
-_count_notif = None
-_hadith_notif = None
-_general_notif = None
 
 try:
     import gi
@@ -82,53 +96,73 @@ def notify_count(zikr: str, count: int, target: int = None, benefit: str = "", m
     Instantly replaces any previous notification on double-click / rapid clicks.
     RTL layout, no icons, no emojis.
     """
-    global _count_notif, _last_count_nid
+    global _last_count_nid
 
     mode_str = (mode or "FREE").upper()
+    t_val = _to_int(target)
+    c_val = _to_int(count, 0)
+
     if mode_str in ("MORNING", "NIGHT"):
         base_title = "أذكار الصباح" if mode_str == "MORNING" else "أذكار المساء"
-        if target and target > 1:
-            title = f"{base_title} - {count}/{target}"
+        if t_val is not None and t_val > 1:
+            title = f"{base_title} - {c_val}/{t_val}"
         else:
             title = base_title
-        body_lines = [_strip_emojis(zikr)]
+        body_lines = [_clean_text(zikr)]
     else:
-        title = _strip_emojis(zikr) if zikr else "سبحان الله"
-        if target and target > 1:
-            body_lines = [f"العدد: {count} / {target}"]
-        elif target == 1:
+        title = _clean_text(zikr) if zikr else "سبحان الله"
+        if t_val is not None and t_val > 1:
+            body_lines = [f"العدد: {c_val} / {t_val}"]
+        elif t_val == 1:
             body_lines = []  # For thikrs with 1 count only, do not show counter
         else:
-            body_lines = [f"العدد: {count}"]
+            body_lines = [f"العدد: {c_val}"]
 
     title = _to_rtl(title)
     body = _to_rtl("\n".join(body_lines))
 
-    # 1. Native libnotify (Instant in-place update)
+    # 1. notify-send CLI (Most reliable and responsive on Linux desktops)
+    if is_notify_send_available():
+        cmd = [
+            "notify-send",
+            "-r", str(NOTIFICATION_REPLACE_ID_COUNT),
+            "-e",
+            "-a", "Sebha",
+            "-t", "2500",
+            "-h", "string:x-canonical-private-synchronous:sebha-counter",
+            "-h", "string:synchronous:sebha-counter",
+            "-h", "int:transient:1"
+        ]
+        if t_val is not None and t_val > 1:
+            progress = max(0, min(100, int((c_val / t_val) * 100)))
+            cmd.extend(["-h", f"int:value:{progress}"])
+        cmd.extend([title, body])
+        
+        try:
+            subprocess.Popen(cmd)
+            return
+        except Exception as e:
+            print("Error executing notify-send:", e)
+
+    # 2. Native libnotify fallback
     if _libnotify_available:
         try:
-            if _count_notif is None:
-                _count_notif = _Notify.Notification.new(title, body, "")
-                _count_notif.set_hint("transient", _GLib.Variant("b", True))
-                _count_notif.set_hint("x-canonical-private-synchronous", _GLib.Variant("s", "sebha-counter"))
-                _count_notif.set_hint("synchronous", _GLib.Variant("s", "sebha-counter"))
-            else:
-                _count_notif.update(title, body, "")
-                _count_notif.set_hint("transient", _GLib.Variant("b", True))
-                _count_notif.set_hint("x-canonical-private-synchronous", _GLib.Variant("s", "sebha-counter"))
-                _count_notif.set_hint("synchronous", _GLib.Variant("s", "sebha-counter"))
+            notif = _Notify.Notification.new(title, body, "")
+            notif.set_hint("transient", _GLib.Variant("b", True))
+            notif.set_hint("x-canonical-private-synchronous", _GLib.Variant("s", "sebha-counter"))
+            notif.set_hint("synchronous", _GLib.Variant("s", "sebha-counter"))
 
-            if target and target > 1:
-                progress = max(0, min(100, int((count / target) * 100)))
-                _count_notif.set_hint("value", _GLib.Variant("i", progress))
+            if t_val is not None and t_val > 1:
+                progress = max(0, min(100, int((c_val / t_val) * 100)))
+                notif.set_hint("value", _GLib.Variant("i", progress))
 
-            _count_notif.set_timeout(2500)
-            _count_notif.show()
+            notif.set_timeout(2500)
+            notif.show()
             return
-        except Exception:
-            _count_notif = None
+        except Exception as e:
+            print("Error executing libnotify:", e)
 
-    # 2. Direct D-Bus fallback
+    # 3. Direct D-Bus fallback
     if _dbus_iface is not None:
         try:
             import dbus
@@ -137,8 +171,8 @@ def notify_count(zikr: str, count: int, target: int = None, benefit: str = "", m
                 "x-canonical-private-synchronous": dbus.String("sebha-counter"),
                 "synchronous": dbus.String("sebha-counter")
             }
-            if target and target > 1:
-                hints["value"] = dbus.Int32(max(0, min(100, int((count / target) * 100))))
+            if t_val is not None and t_val > 1:
+                hints["value"] = dbus.Int32(max(0, min(100, int((c_val / t_val) * 100))))
 
             _last_count_nid = _dbus_iface.Notify(
                 "Sebha",
@@ -154,29 +188,6 @@ def notify_count(zikr: str, count: int, target: int = None, benefit: str = "", m
         except Exception:
             pass
 
-    # 3. notify-send CLI fallback
-    if is_notify_send_available():
-        cmd = [
-            "notify-send",
-            "-r", str(NOTIFICATION_REPLACE_ID_COUNT),
-            "-e",
-            "-a", "Sebha",
-            "-t", "2500",
-            "-h", "string:x-canonical-private-synchronous:sebha-counter",
-            "-h", "string:synchronous:sebha-counter",
-            "-h", "int:transient:1"
-        ]
-        if target and target > 1:
-            progress = max(0, min(100, int((count / target) * 100)))
-            cmd.extend(["-h", f"int:value:{progress}"])
-        cmd.extend([title, body])
-        
-        try:
-            subprocess.Popen(cmd)
-            return
-        except Exception as e:
-            print("Error executing notify-send:", e)
-
     # 4. Tray icon fallback
     if tray_icon and hasattr(tray_icon, "showMessage") and tray_icon.isSystemTrayAvailable():
         try:
@@ -190,30 +201,46 @@ def notify_hadith(text: str, benefit: str = "", tray_icon = None):
     Sends a clean native desktop notification for a Hadith reminder.
     RTL layout, no icons, no emojis.
     """
-    global _hadith_notif, _last_hadith_nid
+    global _last_hadith_nid
 
     title = _to_rtl("حديث شريف")
-    body = _to_rtl(_strip_emojis(text))
+    body_text = _clean_text(text)
+    clean_benefit = _clean_text(benefit)
+    if clean_benefit:
+        body_text += f"\n\n({clean_benefit})"
+    body = _to_rtl(body_text)
 
-    # 1. Native libnotify
+    # 1. notify-send CLI
+    if is_notify_send_available():
+        cmd = [
+            "notify-send",
+            "-r", str(NOTIFICATION_REPLACE_ID_HADITH),
+            "-a", "Sebha",
+            "-t", "8000",
+            "-h", "string:x-canonical-private-synchronous:sebha-hadith",
+            "-h", "string:synchronous:sebha-hadith",
+            title,
+            body
+        ]
+        try:
+            subprocess.Popen(cmd)
+            return
+        except Exception as e:
+            print("Error executing notify-send for hadith:", e)
+
+    # 2. Native libnotify
     if _libnotify_available:
         try:
-            if _hadith_notif is None:
-                _hadith_notif = _Notify.Notification.new(title, body, "")
-                _hadith_notif.set_hint("x-canonical-private-synchronous", _GLib.Variant("s", "sebha-hadith"))
-                _hadith_notif.set_hint("synchronous", _GLib.Variant("s", "sebha-hadith"))
-            else:
-                _hadith_notif.update(title, body, "")
-                _hadith_notif.set_hint("x-canonical-private-synchronous", _GLib.Variant("s", "sebha-hadith"))
-                _hadith_notif.set_hint("synchronous", _GLib.Variant("s", "sebha-hadith"))
-
-            _hadith_notif.set_timeout(8000)
-            _hadith_notif.show()
+            notif = _Notify.Notification.new(title, body, "")
+            notif.set_hint("x-canonical-private-synchronous", _GLib.Variant("s", "sebha-hadith"))
+            notif.set_hint("synchronous", _GLib.Variant("s", "sebha-hadith"))
+            notif.set_timeout(8000)
+            notif.show()
             return
         except Exception:
-            _hadith_notif = None
+            pass
 
-    # 2. Direct D-Bus fallback
+    # 3. Direct D-Bus fallback
     if _dbus_iface is not None:
         try:
             import dbus
@@ -234,24 +261,6 @@ def notify_hadith(text: str, benefit: str = "", tray_icon = None):
         except Exception:
             pass
 
-    # 3. notify-send CLI fallback
-    if is_notify_send_available():
-        cmd = [
-            "notify-send",
-            "-r", str(NOTIFICATION_REPLACE_ID_HADITH),
-            "-a", "Sebha",
-            "-t", "8000",
-            "-h", "string:x-canonical-private-synchronous:sebha-hadith",
-            "-h", "string:synchronous:sebha-hadith",
-            title,
-            body
-        ]
-        try:
-            subprocess.Popen(cmd)
-            return
-        except Exception as e:
-            print("Error executing notify-send for hadith:", e)
-
     # 4. Tray icon fallback
     if tray_icon and hasattr(tray_icon, "showMessage") and tray_icon.isSystemTrayAvailable():
         try:
@@ -265,7 +274,7 @@ def notify_session_completed(mode: str = "MORNING", tray_icon = None):
     Sends a clean notification when an entire Athkar session is completed.
     RTL layout, no icons, no emojis.
     """
-    global _general_notif, _last_general_nid
+    global _last_general_nid
 
     mode_str = (mode or "MORNING").upper()
     title = _to_rtl("تقبل الله طاعتكم")
@@ -276,20 +285,33 @@ def notify_session_completed(mode: str = "MORNING", tray_icon = None):
     else:
         body = _to_rtl("تم إتمام الورد بنجاح")
 
-    # 1. Native libnotify
+    # 1. notify-send CLI
+    if is_notify_send_available():
+        cmd = [
+            "notify-send",
+            "-r", str(NOTIFICATION_REPLACE_ID_GENERAL),
+            "-a", "Sebha",
+            "-t", "5000",
+            title,
+            body
+        ]
+        try:
+            subprocess.Popen(cmd)
+            return
+        except Exception as e:
+            print("Error executing notify-send for session completion:", e)
+
+    # 2. Native libnotify
     if _libnotify_available:
         try:
-            if _general_notif is None:
-                _general_notif = _Notify.Notification.new(title, body, "")
-            else:
-                _general_notif.update(title, body, "")
-            _general_notif.set_timeout(5000)
-            _general_notif.show()
+            notif = _Notify.Notification.new(title, body, "")
+            notif.set_timeout(5000)
+            notif.show()
             return
         except Exception:
-            _general_notif = None
+            pass
 
-    # 2. Direct D-Bus fallback
+    # 3. Direct D-Bus fallback
     if _dbus_iface is not None:
         try:
             _last_general_nid = _dbus_iface.Notify(
@@ -305,22 +327,6 @@ def notify_session_completed(mode: str = "MORNING", tray_icon = None):
             return
         except Exception:
             pass
-
-    # 3. notify-send CLI fallback
-    if is_notify_send_available():
-        cmd = [
-            "notify-send",
-            "-r", str(NOTIFICATION_REPLACE_ID_GENERAL),
-            "-a", "Sebha",
-            "-t", "5000",
-            title,
-            body
-        ]
-        try:
-            subprocess.Popen(cmd)
-            return
-        except Exception as e:
-            print("Error executing notify-send for session completion:", e)
 
     # 4. Tray icon fallback
     if tray_icon and hasattr(tray_icon, "showMessage") and tray_icon.isSystemTrayAvailable():

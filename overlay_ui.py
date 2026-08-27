@@ -836,8 +836,6 @@ class SebhaOverlay(QWidget):
 
         if show_overlay_ui and self.is_overlay_hidden():
             self.show_overlay()
-            if self.mode != 'FREE':
-                return
 
         if self.mode == 'FREE':
             self.count += 1
