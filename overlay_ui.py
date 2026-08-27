@@ -1,11 +1,12 @@
 import os
 import json
 import sys
-from PyQt6.QtWidgets import QApplication, QWidget, QVBoxLayout, QLabel, QPushButton, QHBoxLayout, QSpacerItem, QSizePolicy, QGraphicsOpacityEffect
-from PyQt6.QtCore import Qt, QTimer, QPoint, QRect, QPropertyAnimation, QEasingCurve, pyqtSignal
+from PyQt6.QtWidgets import QApplication, QWidget, QVBoxLayout, QLabel, QPushButton, QHBoxLayout, QSpacerItem, QSizePolicy
+from PyQt6.QtCore import Qt, QTimer, QPoint, QRect, QPropertyAnimation, QEasingCurve, pyqtSignal, pyqtProperty
 from PyQt6.QtGui import QColor, QPalette, QFont, QFontDatabase
 
 from config_path import CONFIG_PATH
+import notification_manager
 
 def resource_path(relative_path):
     try:
@@ -30,6 +31,9 @@ class SebhaOverlay(QWidget):
     def __init__(self):
         super().__init__()
         
+        self._overlay_opacity = 1.0
+        self.is_mouse_hovered = False
+
         # Ensure fonts directory exists and download/migrate fonts
         self.ensure_fonts_dir_setup()
         
@@ -48,6 +52,7 @@ class SebhaOverlay(QWidget):
                             
         self.font_family = ""
         self.overlay_position = "Bottom-Right"
+        self.display_mode = "overlay"
             
         self.count = 0
         self.zikr = "سبحان الله"
@@ -79,15 +84,14 @@ class SebhaOverlay(QWidget):
 
         self.initUI()
 
-        # Setup persistent opacity animation for smooth transitions
-        self.fade_anim = QPropertyAnimation(self.opacity_effect, b"opacity")
+        # Setup persistent opacity animation on custom property for universal Wayland/X11 support
+        self.fade_anim = QPropertyAnimation(self, b"overlay_opacity")
         self.fade_anim.setDuration(200)
         self.fade_anim.finished.connect(self.on_fade_finished)
-        
         self.hide_timer = QTimer(self)
         self.hide_timer.timeout.connect(self.hide_overlay)
         self.hide_timer.setInterval(5000)
-
+        
         self.hover_timer = QTimer(self)
         self.hover_timer.setInterval(100)
         self.hover_timer.timeout.connect(self.check_hover_zones)
@@ -97,6 +101,41 @@ class SebhaOverlay(QWidget):
 
         # Warm up styles, layouts, and fonts to prevent lag on first hover
         self.warm_up()
+
+    def get_overlay_opacity(self):
+        return getattr(self, "_overlay_opacity", 1.0)
+        
+    def set_overlay_opacity(self, val):
+        self._overlay_opacity = val
+        self.apply_opacity_to_widgets(val)
+        
+    overlay_opacity = pyqtProperty(float, get_overlay_opacity, set_overlay_opacity)
+
+    def apply_opacity_to_widgets(self, val):
+        bg_alpha = int(200 * val)
+        text_alpha = int(255 * val)
+        subtext_alpha = int(170 * val)
+        
+        if hasattr(self, 'container'):
+            self.container.setStyleSheet(f"""
+                #glassyContainer {{
+                    background-color: rgba(30, 30, 30, {bg_alpha});
+                    border-radius: 15px;
+                }}
+            """)
+        if hasattr(self, 'zikr_label'):
+            self.zikr_label.setStyleSheet(f"color: rgba(255, 255, 255, {text_alpha}); background: transparent;")
+        if hasattr(self, 'benefit_label'):
+            self.benefit_label.setStyleSheet(f"color: rgba(170, 170, 170, {subtext_alpha}); background: transparent;")
+        if hasattr(self, 'count_label'):
+            if self.count_label.text() == "حديث شريف":
+                self.count_label.setStyleSheet(f"color: rgba(255, 152, 0, {text_alpha}); background: transparent;")
+            elif "/" in self.count_label.text():
+                self.count_label.setStyleSheet(f"color: rgba(33, 150, 243, {text_alpha}); background: transparent;")
+            else:
+                self.count_label.setStyleSheet(f"color: rgba(76, 175, 80, {text_alpha}); background: transparent;")
+        if hasattr(self, 'upper_widget'):
+            self.update_button_styles()
 
     def ensure_fonts_dir_setup(self):
         fonts_dir = resource_path("assets/fonts")
@@ -156,6 +195,7 @@ class SebhaOverlay(QWidget):
                     self.azkar_list = data.get("azkar_list", ["سبحان الله"])
                     self.font_family = data.get("font_family", "Default")
                     self.overlay_position = data.get("overlay_position", "Bottom-Right")
+                    self.display_mode = data.get("display_mode", "overlay")
                     if "stats" in data:
                         self.stats = data["stats"]
                         
@@ -199,6 +239,7 @@ class SebhaOverlay(QWidget):
                     "azkar_list": self.azkar_list,
                     "font_family": self.font_family,
                     "overlay_position": self.overlay_position,
+                    "display_mode": getattr(self, "display_mode", "overlay"),
                     "stats": self.stats
                 })
                 json.dump(current_data, f, ensure_ascii=False, indent=4)
@@ -206,21 +247,27 @@ class SebhaOverlay(QWidget):
             print("Error saving config:", e)
 
     def get_current_arabic_font_family(self):
-        if hasattr(self, 'font_family') and self.font_family:
+        if hasattr(self, 'font_family') and self.font_family and self.font_family != "Default":
             if self.font_family in self.loaded_font_families:
                 return self.font_family
         if hasattr(self, 'loaded_font_families') and self.loaded_font_families:
+            if "Cairo" in self.loaded_font_families:
+                return "Cairo"
             return self.loaded_font_families[0]
         return "Segoe UI"
 
     def get_arabic_font(self, size, bold=False):
         font = QFont(self.get_current_arabic_font_family(), size)
         font.setBold(bold)
+        font.setStyleStrategy(QFont.StyleStrategy.PreferAntialias | QFont.StyleStrategy.PreferOutline | QFont.StyleStrategy.PreferQuality)
+        font.setHintingPreference(QFont.HintingPreference.PreferFullHinting)
         return font
         
     def get_english_font(self, size, bold=False):
         font = QFont("Segoe UI", size)
         font.setBold(bold)
+        font.setStyleStrategy(QFont.StyleStrategy.PreferAntialias | QFont.StyleStrategy.PreferOutline | QFont.StyleStrategy.PreferQuality)
+        font.setHintingPreference(QFont.HintingPreference.PreferFullHinting)
         return font
 
     def get_dynamic_font_size(self, text, base_size):
@@ -292,10 +339,6 @@ class SebhaOverlay(QWidget):
                 border-radius: 15px;
             }
         """)
-        
-        self.opacity_effect = QGraphicsOpacityEffect(self.container)
-        self.container.setGraphicsEffect(self.opacity_effect)
-        self.opacity_effect.setOpacity(1.0)
         
         container_layout = QVBoxLayout(self.container)
         container_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -405,7 +448,7 @@ class SebhaOverlay(QWidget):
         options_layout.addWidget(self.exit_btn)
         options_layout.addWidget(self.hide_btn)
         options_layout.addWidget(self.next_btn)
-        
+        self.trigger_circle.setVisible(False)
         self.options_container.setVisible(False)
 
         container_layout.addWidget(self.zikr_label)
@@ -416,9 +459,9 @@ class SebhaOverlay(QWidget):
         self.update_ui_state()
 
     def is_cursor_inside(self):
-        # Robust physical cursor check to prevent synthetic animation glitches
-        pos = self.mapFromGlobal(self.cursor().pos())
-        return self.rect().contains(pos)
+        if not self.isVisible():
+            return False
+        return getattr(self, "is_mouse_hovered", False) or self.underMouse()
 
     def warm_up(self):
         # Force compilation of styles, layout generation, and font rasterization
@@ -536,13 +579,51 @@ class SebhaOverlay(QWidget):
         target_height = max(min_height, target_height)
         self.apply_geometry(target_width, target_height, animate=animate)
 
+    def get_active_screen(self):
+        try:
+            from pynput.mouse import Controller
+            mx, my = Controller().position
+            m_point = QPoint(int(mx), int(my))
+            
+            # Check bounding box of all screens in logical space
+            for s in QApplication.screens():
+                if s.geometry().contains(m_point):
+                    return s
+
+            # Check screenAt
+            screen = QApplication.screenAt(m_point)
+            if screen:
+                return screen
+                    
+            # Nearest screen center distance fallback
+            best_screen = None
+            min_dist = float('inf')
+            for s in QApplication.screens():
+                g = s.geometry()
+                cx = g.x() + g.width() // 2
+                cy = g.y() + g.height() // 2
+                dist = (mx - cx) ** 2 + (my - cy) ** 2
+                if dist < min_dist:
+                    min_dist = dist
+                    best_screen = s
+            if best_screen:
+                return best_screen
+        except Exception:
+            pass
+            
+        try:
+            cpos = self.cursor().pos()
+            if cpos != QPoint(0, 0):
+                screen = QApplication.screenAt(cpos)
+                if screen:
+                    return screen
+        except Exception:
+            pass
+            
+        return self.screen() or QApplication.primaryScreen()
+
     def apply_geometry(self, target_width, target_height, animate=True):
-        cursor_pos = self.cursor().pos()
-        screen_obj = QApplication.screenAt(cursor_pos)
-        if not screen_obj:
-            screen_obj = self.screen()
-        if not screen_obj:
-            screen_obj = QApplication.primaryScreen()
+        screen_obj = self.get_active_screen()
         screen = screen_obj.availableGeometry()
         pos_setting = getattr(self, "overlay_position", "Bottom-Right")
         
@@ -567,6 +648,9 @@ class SebhaOverlay(QWidget):
             
         target_rect = QRect(x, y, target_width, target_height)
         
+        if self.windowHandle():
+            self.windowHandle().setScreen(screen_obj)
+
         if self.geometry() != target_rect:
             self.detect_background_brightness(x, y, target_width, target_height)
             
@@ -578,10 +662,21 @@ class SebhaOverlay(QWidget):
         else:
             self.setGeometry(target_rect)
 
+    def toggle_session(self, mode):
+        """Toggle session: switch to requested mode, or exit to FREE if already active."""
+        if self.mode == mode:
+            self.exit_session()
+        else:
+            self.start_session(mode)
+
     def start_session(self, mode):
-        if not self.db.get(mode.lower()):
+        session_data = self.db.get(mode.lower(), [])
+        if not session_data:
             print(f"No data for {mode}")
             return
+            
+        show_overlay_ui = getattr(self, "display_mode", "overlay") in ("overlay", "both")
+        send_native_notify = getattr(self, "display_mode", "overlay") in ("notification", "both")
             
         def perform_change():
             self.mode = mode
@@ -589,11 +684,31 @@ class SebhaOverlay(QWidget):
             self.session_count = 0
             self.zikr_label.setText("")
             self.benefit_label.setText("")
-            self.show_overlay()
+            if show_overlay_ui:
+                self.show_overlay()
             
-        self.transition_to_zikr(perform_change)
+        if show_overlay_ui:
+            self.transition_to_zikr(perform_change)
+        else:
+            self.mode = mode
+            self.session_index = 0
+            self.session_count = 0
+            
+        if send_native_notify and session_data:
+            first_item = session_data[0]
+            notification_manager.notify_count(
+                zikr=first_item.get("text", ""),
+                count=0,
+                target=first_item.get("target_count", 1),
+                benefit=first_item.get("benefit", ""),
+                mode=mode
+            )
 
     def finish_session(self):
+        send_native_notify = getattr(self, "display_mode", "overlay") in ("notification", "both")
+        if send_native_notify:
+            notification_manager.notify_session_completed(self.mode)
+            
         if self.mode == 'MORNING':
             self.stats["morning_sessions_completed"] += 1
             self.log_history_event("morning_sessions")
@@ -604,11 +719,26 @@ class SebhaOverlay(QWidget):
         self.exit_session()
 
     def exit_session(self):
-        def perform_change():
-            self.mode = 'FREE'
-            self.zikr_label.setText("")
-            self.show_overlay()
-        self.transition_to_zikr(perform_change)
+        show_overlay_ui = getattr(self, "display_mode", "overlay") in ("overlay", "both")
+        send_native_notify = getattr(self, "display_mode", "overlay") in ("notification", "both")
+        
+        self.mode = 'FREE'
+        self.session_index = 0
+        self.session_count = 0
+        
+        if send_native_notify:
+            notification_manager.notify_count(
+                zikr=self.zikr,
+                count=self.count,
+                mode='FREE'
+            )
+            
+        if show_overlay_ui:
+            def perform_change():
+                self.zikr_label.setText("")
+                self.benefit_label.setText("")
+                self.show_overlay()
+            self.transition_to_zikr(perform_change)
 
     def show_hadith_notification(self, hadith_item=None):
         if not hadith_item:
@@ -618,32 +748,42 @@ class SebhaOverlay(QWidget):
             import random
             hadith_item = random.choice(hadiths[:min(100, len(hadiths))])
 
-        def perform_change():
-            text = hadith_item.get("text", "")
-            benefit = hadith_item.get("benefit", "")
-            
-            font_size = self.get_dynamic_font_size(text, 16)
-            self.zikr_label.setText(text)
-            self.zikr_label.setFont(self.get_arabic_font(font_size, True))
-            
-            if benefit:
-                self.benefit_label.setText(f"📖 {benefit}")
-                self.benefit_label.setFont(self.get_arabic_font(max(12, font_size - 4), False))
-                self.benefit_label.setVisible(True)
-            else:
-                self.benefit_label.setVisible(False)
-                
-            self.count_label.setText("حديث شريف")
-            self.count_label.setStyleSheet("color: #FF9800;")
-            self.count_label.setVisible(True)
-            
-            self.show_overlay()
+        show_overlay_ui = getattr(self, "display_mode", "overlay") in ("overlay", "both")
+        send_native_notify = getattr(self, "display_mode", "overlay") in ("notification", "both")
 
-        self.transition_to_zikr(perform_change)
+        if send_native_notify:
+            notification_manager.notify_hadith(
+                text=hadith_item.get("text", ""),
+                benefit=hadith_item.get("benefit", "")
+            )
+
+        if show_overlay_ui:
+            def perform_change():
+                text = hadith_item.get("text", "")
+                benefit = hadith_item.get("benefit", "")
+                
+                font_size = self.get_dynamic_font_size(text, 16)
+                self.zikr_label.setText(text)
+                self.zikr_label.setFont(self.get_arabic_font(font_size, True))
+                
+                if benefit:
+                    self.benefit_label.setText(f"📖 {benefit}")
+                    self.benefit_label.setFont(self.get_arabic_font(max(12, font_size - 4), False))
+                    self.benefit_label.setVisible(True)
+                else:
+                    self.benefit_label.setVisible(False)
+                    
+                self.count_label.setText("حديث شريف")
+                self.count_label.setStyleSheet("color: #FF9800;")
+                self.count_label.setVisible(True)
+                
+                self.show_overlay()
+
+            self.transition_to_zikr(perform_change)
 
     def is_overlay_hidden(self):
         return (not self.isVisible() or 
-                self.opacity_effect.opacity() == 0.0 or 
+                self.overlay_opacity <= 0.01 or 
                 (self.fade_anim.state() == QPropertyAnimation.State.Running and self.fade_anim.endValue() == 0.0))
 
     def mousePressEvent(self, event):
@@ -653,8 +793,48 @@ class SebhaOverlay(QWidget):
         else:
             super().mousePressEvent(event)
 
+    def contextMenuEvent(self, event):
+        from PyQt6.QtWidgets import QMenu
+        menu = QMenu(self)
+        
+        show_action = menu.addAction("إخفاء الواجهة (Hide Overlay)" if self.isVisible() and self.overlay_opacity > 0.1 else "إظهار الواجهة (Show Overlay)")
+        show_action.triggered.connect(lambda: self.hide_overlay_instantly() if self.isVisible() and self.overlay_opacity > 0.1 else self.show_overlay())
+        
+        menu.addSeparator()
+        
+        morning_action = menu.addAction("أذكار الصباح")
+        morning_action.setCheckable(True)
+        morning_action.setChecked(self.mode == 'MORNING')
+        morning_action.triggered.connect(lambda: self.toggle_session('MORNING'))
+        
+        night_action = menu.addAction("أذكار المساء")
+        night_action.setCheckable(True)
+        night_action.setChecked(self.mode == 'NIGHT')
+        night_action.triggered.connect(lambda: self.toggle_session('NIGHT'))
+        
+        free_action = menu.addAction("الوضع الحر")
+        free_action.setCheckable(True)
+        free_action.setChecked(self.mode == 'FREE')
+        free_action.triggered.connect(self.exit_session)
+        
+        hadith_action = menu.addAction("حديث شريف")
+        hadith_action.triggered.connect(lambda: self.show_hadith_notification())
+        
+        menu.addSeparator()
+        
+        reset_action = menu.addAction("إعادة تعيين العداد (Reset Counter)")
+        reset_action.triggered.connect(self.reset_count)
+        
+        settings_action = menu.addAction("الإعدادات (Settings)")
+        settings_action.triggered.connect(self.open_settings_requested.emit)
+        
+        menu.exec(event.globalPos())
+
     def increment_count(self):
-        if self.is_overlay_hidden():
+        show_overlay_ui = getattr(self, "display_mode", "overlay") in ("overlay", "both")
+        send_native_notify = getattr(self, "display_mode", "overlay") in ("notification", "both")
+
+        if show_overlay_ui and self.is_overlay_hidden():
             self.show_overlay()
             if self.mode != 'FREE':
                 return
@@ -663,33 +843,72 @@ class SebhaOverlay(QWidget):
             self.count += 1
             self.stats["total_free_clicks"] += 1
             self.log_history_event("free_clicks")
-            self.count_label.setText(str(self.count))
             self.save_config()
-            self.show_overlay()
+            
+            if send_native_notify:
+                notification_manager.notify_count(
+                    zikr=self.zikr,
+                    count=self.count,
+                    mode='FREE'
+                )
+                
+            if show_overlay_ui:
+                self.count_label.setText(str(self.count))
+                self.show_overlay()
         else:
             session_data = self.db.get(self.mode.lower(), [])
             if self.session_index < len(session_data):
-                target = session_data[self.session_index].get("target_count", 1)
+                item = session_data[self.session_index]
+                target = item.get("target_count", 1)
                 self.session_count += 1
                 
                 if self.session_count >= target:
-                    def perform_change():
+                    if self.session_index + 1 >= len(session_data):
+                        self.finish_session()
+                    else:
                         self.session_index += 1
                         self.session_count = 0
-                        self.zikr_label.setText("")
-                        self.benefit_label.setText("")
-                        self.show_overlay()
-                    self.transition_to_zikr(perform_change)
+                        next_item = session_data[self.session_index]
+                        
+                        if send_native_notify:
+                            notification_manager.notify_count(
+                                zikr=next_item.get("text", ""),
+                                count=0,
+                                target=next_item.get("target_count", 1),
+                                benefit=next_item.get("benefit", ""),
+                                mode=self.mode
+                            )
+                            
+                        if show_overlay_ui:
+                            def perform_change():
+                                self.zikr_label.setText("")
+                                self.benefit_label.setText("")
+                                self.show_overlay()
+                            self.transition_to_zikr(perform_change)
                 else:
-                    # Index didn't change! Only update the count label. Very fast, no lag!
-                    self.count_label.setText(f"{self.session_count} / {target}")
-                    self.show_overlay()
+                    if send_native_notify:
+                        notification_manager.notify_count(
+                            zikr=item.get("text", ""),
+                            count=self.session_count,
+                            target=target,
+                            benefit=item.get("benefit", ""),
+                            mode=self.mode
+                        )
+                    if show_overlay_ui:
+                        self.count_label.setText(f"{self.session_count} / {target}")
+                        self.show_overlay()
 
     def reset_count(self):
         if self.mode == 'FREE':
             self.count = 0
             self.count_label.setText(str(self.count))
             self.save_config()
+            if getattr(self, "display_mode", "overlay") in ("notification", "both"):
+                notification_manager.notify_count(
+                    zikr=self.zikr,
+                    count=self.count,
+                    mode='FREE'
+                )
         
     def copy_zikr_to_clipboard(self, event):
         text = self.zikr_label.text()
@@ -701,25 +920,11 @@ class SebhaOverlay(QWidget):
             QTimer.singleShot(800, lambda: self.zikr_label.setStyleSheet("color: white;"))
         
     def transition_to_zikr(self, update_func):
+        self.pending_transition_func = update_func
         self.fade_anim.stop()
-        self.fade_anim.setStartValue(self.opacity_effect.opacity())
+        self.fade_anim.setStartValue(self.overlay_opacity)
         self.fade_anim.setEndValue(0.1)
         self.fade_anim.setDuration(120)
-        
-        def on_fade_out():
-            try:
-                self.fade_anim.finished.disconnect(on_fade_out)
-            except Exception:
-                pass
-            update_func()
-            self.update_ui_state()
-            
-            self.fade_anim.setStartValue(0.1)
-            self.fade_anim.setEndValue(1.0)
-            self.fade_anim.setDuration(180)
-            self.fade_anim.start()
-            
-        self.fade_anim.finished.connect(on_fade_out)
         self.fade_anim.start()
 
     def change_zikr(self, index_delta):
@@ -730,8 +935,17 @@ class SebhaOverlay(QWidget):
             self.zikr_index = (self.zikr_index + index_delta) % len(self.azkar_list)
             self.zikr = self.azkar_list[self.zikr_index]
             self.save_config()
+            if getattr(self, "display_mode", "overlay") in ("notification", "both"):
+                notification_manager.notify_count(
+                    zikr=self.zikr,
+                    count=self.count,
+                    mode='FREE'
+                )
             
-        self.transition_to_zikr(perform_change)
+        if getattr(self, "display_mode", "overlay") in ("overlay", "both"):
+            self.transition_to_zikr(perform_change)
+        else:
+            perform_change()
 
     def log_history_event(self, event_type):
         from datetime import date
@@ -747,31 +961,49 @@ class SebhaOverlay(QWidget):
         self.stats["history"][today][event_type] += 1
 
     def on_fade_finished(self):
-        if self.opacity_effect.opacity() == 0.0:
+        end_val = self.fade_anim.endValue()
+        
+        if getattr(self, "pending_transition_func", None) is not None:
+            func = self.pending_transition_func
+            self.pending_transition_func = None
+            func()
+            self.update_ui_state()
+            self.fade_anim.setStartValue(0.1)
+            self.fade_anim.setEndValue(1.0)
+            self.fade_anim.setDuration(180)
+            self.fade_anim.start()
+            return
+
+        if end_val == 0.0:
+            self.set_overlay_opacity(0.0)
             self.hide()
             self.hide_options_bar()
+        elif end_val == 1.0:
+            self.set_overlay_opacity(1.0)
 
     def update_hide_timer_interval(self):
         text = self.zikr_label.text()
         char_count = len(text) if text else 0
-        interval = max(4000, min(8000, 4000 + char_count * 30))
+        # Disappear according to character length: min 4.5s, scaling up to 20s for long texts
+        interval = max(4500, min(20000, 4500 + char_count * 40))
         self.hide_timer.setInterval(interval)
 
     def show_overlay(self):
+        self.update_ui_state(animate=False)
         self.update_hide_timer_interval()
         self.hide_timer.start()
         if self.fade_anim.state() == QPropertyAnimation.State.Running and self.fade_anim.endValue() == 1.0:
             return
             
         # Detect background brightness before making it visible
-        if not self.isVisible() or self.opacity_effect.opacity() < 0.1:
+        if not self.isVisible() or self.overlay_opacity < 0.1:
             self.detect_background_brightness()
 
         if not self.isVisible():
-            self.opacity_effect.setOpacity(0.0)
+            self.set_overlay_opacity(0.0)
             self.show()
         self.fade_anim.stop()
-        self.fade_anim.setStartValue(self.opacity_effect.opacity())
+        self.fade_anim.setStartValue(self.overlay_opacity)
         self.fade_anim.setEndValue(1.0)
         self.fade_anim.start()
         
@@ -779,8 +1011,9 @@ class SebhaOverlay(QWidget):
         if not self.is_cursor_inside():
             if self.fade_anim.state() == QPropertyAnimation.State.Running and self.fade_anim.endValue() == 0.0:
                 return
+            self.hide_timer.stop()
             self.fade_anim.stop()
-            self.fade_anim.setStartValue(self.opacity_effect.opacity())
+            self.fade_anim.setStartValue(self.overlay_opacity)
             self.fade_anim.setEndValue(0.0)
             self.fade_anim.start()
         else:
@@ -789,8 +1022,9 @@ class SebhaOverlay(QWidget):
 
     def hide_overlay_instantly(self):
         self.hide_timer.stop()
+        self.hover_timer.stop()
         self.fade_anim.stop()
-        self.opacity_effect.setOpacity(0.0)
+        self.set_overlay_opacity(0.0)
         self.hide()
         self.hide_options_bar()
 
@@ -809,26 +1043,30 @@ class SebhaOverlay(QWidget):
                 self.hide_timer.start()
 
     def show_options_bar(self):
-        if not self.options_container.isVisible():
-            self.trigger_circle.setVisible(False)
-            self.options_container.setVisible(True)
+        self.trigger_circle.setVisible(False)
+        self.options_container.setVisible(True)
 
     def hide_options_bar(self):
-        if self.options_container.isVisible():
-            self.options_container.setVisible(False)
+        self.options_container.setVisible(False)
+        if self.is_cursor_inside():
             self.trigger_circle.setVisible(True)
+        else:
+            self.trigger_circle.setVisible(False)
 
     def enterEvent(self, event):
+        self.is_mouse_hovered = True
         self.hide_timer.stop()
         self.hover_timer.start()
         self.check_hover_zones()
         self.fade_anim.stop()
-        self.opacity_effect.setOpacity(1.0)
+        self.set_overlay_opacity(1.0)
         super().enterEvent(event)
 
     def leaveEvent(self, event):
+        self.is_mouse_hovered = False
         self.hover_timer.stop()
         self.hide_options_bar()
+        self.update_hide_timer_interval()
         self.hide_timer.start()
         super().leaveEvent(event)
 
@@ -849,27 +1087,50 @@ class SebhaOverlay(QWidget):
             self.change_zikr(-1)
         else:
             if self.session_index > 0:
-                def perform_change():
-                    self.session_index -= 1
-                    self.session_count = 0
-                    self.zikr_label.setText("")
-                    self.benefit_label.setText("")
-                    self.show_overlay()
-                self.transition_to_zikr(perform_change)
+                self.session_index -= 1
+                self.session_count = 0
+                session_data = self.db.get(self.mode.lower(), [])
+                curr_item = session_data[self.session_index] if self.session_index < len(session_data) else None
+                if getattr(self, "display_mode", "overlay") in ("notification", "both") and curr_item:
+                    notification_manager.notify_count(
+                        zikr=curr_item.get("text", ""),
+                        count=0,
+                        target=curr_item.get("target_count", 1),
+                        benefit=curr_item.get("benefit", ""),
+                        mode=self.mode
+                    )
+                if getattr(self, "display_mode", "overlay") in ("overlay", "both"):
+                    def perform_change():
+                        self.zikr_label.setText("")
+                        self.benefit_label.setText("")
+                        self.show_overlay()
+                    self.transition_to_zikr(perform_change)
 
     def next_zikr(self):
         if self.mode == 'FREE':
             self.change_zikr(1)
         else:
             session_data = self.db.get(self.mode.lower(), [])
-            if self.session_index < len(session_data):
-                def perform_change():
-                    self.session_index += 1
-                    self.session_count = 0
-                    self.zikr_label.setText("")
-                    self.benefit_label.setText("")
-                    self.show_overlay()
-                self.transition_to_zikr(perform_change)
+            if self.session_index + 1 < len(session_data):
+                self.session_index += 1
+                self.session_count = 0
+                curr_item = session_data[self.session_index]
+                if getattr(self, "display_mode", "overlay") in ("notification", "both"):
+                    notification_manager.notify_count(
+                        zikr=curr_item.get("text", ""),
+                        count=0,
+                        target=curr_item.get("target_count", 1),
+                        benefit=curr_item.get("benefit", ""),
+                        mode=self.mode
+                    )
+                if getattr(self, "display_mode", "overlay") in ("overlay", "both"):
+                    def perform_change():
+                        self.zikr_label.setText("")
+                        self.benefit_label.setText("")
+                        self.show_overlay()
+                    self.transition_to_zikr(perform_change)
+            elif self.session_index + 1 >= len(session_data):
+                self.finish_session()
 
     def detect_background_brightness(self, x=None, y=None, width=None, height=None):
         if x is not None and y is not None and width is not None and height is not None:
@@ -893,22 +1154,18 @@ class SebhaOverlay(QWidget):
         grab_width = max(10, target_width - 30)
         grab_height = 40
         
-        cursor_pos = self.cursor().pos()
-        screen_obj = QApplication.screenAt(cursor_pos)
-        if not screen_obj:
-            screen_obj = self.screen()
-        if not screen_obj:
-            screen_obj = QApplication.primaryScreen()
+        screen_obj = self.get_active_screen()
             
         was_visible = self.isVisible()
+        current_opacity = self.overlay_opacity
         if was_visible:
-            self.setWindowOpacity(0.0)
+            self.set_overlay_opacity(0.0)
             QApplication.processEvents()
             
         pixmap = screen_obj.grabWindow(0, grab_x, grab_y, grab_width, grab_height)
         
         if was_visible:
-            self.setWindowOpacity(1.0)
+            self.set_overlay_opacity(current_opacity)
             
         if not pixmap.isNull():
             scaled_img = pixmap.toImage().scaled(1, 1, Qt.AspectRatioMode.IgnoreAspectRatio, Qt.TransformationMode.SmoothTransformation)
