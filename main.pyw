@@ -38,9 +38,12 @@ def resource_path(relative_path):
         base_path = os.path.dirname(os.path.abspath(__file__))
     return os.path.join(base_path, relative_path)
 
-# Set QT_QPA_PLATFORM for Linux if not set
-if sys.platform.startswith("linux") and "QT_QPA_PLATFORM" not in os.environ:
-    os.environ["QT_QPA_PLATFORM"] = "xcb"
+# Set QT_QPA_PLATFORM and High-DPI scaling for Linux
+if sys.platform.startswith("linux"):
+    if "QT_QPA_PLATFORM" not in os.environ:
+        os.environ["QT_QPA_PLATFORM"] = "wayland;xcb"
+    os.environ["QT_AUTO_SCREEN_SCALE_FACTOR"] = "1"
+    os.environ["QT_ENABLE_HIGHDPI_SCALING"] = "1"
 
 def handle_existing_instance():
     try:
@@ -102,43 +105,6 @@ def main():
     listener.signals.triggered.connect(overlay.increment_count)
     listener.start()
     
-    # System Tray
-    tray_icon = QSystemTrayIcon(app_icon, app)
-    tray_icon.setToolTip("Sebha")
-    
-    menu = QMenu()
-    show_action = menu.addAction("Show Overlay")
-    show_action.triggered.connect(overlay.show_overlay)
-    
-    settings_action = menu.addAction("Settings")
-    settings_action.triggered.connect(settings_dialog.show)
-    
-    menu.addSeparator()
-    
-    quit_action = menu.addAction("Quit")
-    def on_quit():
-        listener.stop()
-        app.quit()
-    quit_action.triggered.connect(on_quit)
-    
-    tray_icon.setContextMenu(menu)
-    
-    def update_tray_visibility():
-        show_tray = True
-        if os.path.exists(CONFIG_PATH):
-            try:
-                with open(CONFIG_PATH, "r", encoding="utf-8") as f:
-                    show_tray = json.load(f).get("show_tray_icon", True)
-            except Exception:
-                pass
-        if show_tray and QSystemTrayIcon.isSystemTrayAvailable():
-            tray_icon.show()
-        else:
-            tray_icon.hide()
-
-    settings_dialog.config_updated.connect(update_tray_visibility)
-    update_tray_visibility()
-    
     # Periodic Hadith Reminders Timer
     hadith_timer = QThread() # Use QTimer on app looper
     from PyQt6.QtCore import QTimer
@@ -152,24 +118,8 @@ def main():
         # Pick from top 100 concise Hadiths
         h = random.choice(hadith_list[:min(100, len(hadith_list))])
         
-        # Display overlay card
+        # Display overlay card and/or native notification
         overlay.show_hadith_notification(h)
-        
-        # Display system tray message if enabled
-        show_tray = True
-        if os.path.exists(CONFIG_PATH):
-            try:
-                with open(CONFIG_PATH, "r", encoding="utf-8") as f:
-                    show_tray = json.load(f).get("show_tray_icon", True)
-            except Exception:
-                pass
-        if show_tray and QSystemTrayIcon.isSystemTrayAvailable():
-            tray_icon.showMessage(
-                "📖 حديث شريف",
-                f"{h.get('text', '')}\n({h.get('benefit', '')})",
-                QSystemTrayIcon.Icon.Information,
-                7000
-            )
 
     def update_hadith_timer():
         enabled = True
@@ -192,8 +142,74 @@ def main():
     hadith_qtimer.timeout.connect(trigger_hadith_reminder)
     settings_dialog.config_updated.connect(update_hadith_timer)
     update_hadith_timer()
+
+    # System Tray
+    tray_icon = QSystemTrayIcon(app_icon, app)
+    tray_icon.setToolTip("Sebha")
     
-    overlay.show_overlay()
+    menu = QMenu()
+    show_action = menu.addAction("إظهار الواجهة (Show Overlay)")
+    show_action.triggered.connect(overlay.show_overlay)
+    
+    menu.addSeparator()
+    
+    morning_action = menu.addAction("أذكار الصباح")
+    morning_action.setCheckable(True)
+    morning_action.triggered.connect(lambda: overlay.toggle_session('MORNING'))
+    
+    night_action = menu.addAction("أذكار المساء")
+    night_action.setCheckable(True)
+    night_action.triggered.connect(lambda: overlay.toggle_session('NIGHT'))
+    
+    free_action = menu.addAction("الوضع الحر")
+    free_action.setCheckable(True)
+    free_action.triggered.connect(overlay.exit_session)
+    
+    hadith_action = menu.addAction("حديث شريف")
+    hadith_action.triggered.connect(trigger_hadith_reminder)
+    
+    menu.addSeparator()
+    
+    reset_action = menu.addAction("إعادة تعيين العداد (Reset Counter)")
+    reset_action.triggered.connect(overlay.reset_count)
+    
+    settings_action = menu.addAction("الإعدادات (Settings)")
+    settings_action.triggered.connect(settings_dialog.show)
+    
+    menu.addSeparator()
+    
+    quit_action = menu.addAction("خروج (Quit)")
+    def on_quit():
+        listener.stop()
+        app.quit()
+    quit_action.triggered.connect(on_quit)
+    
+    def update_menu_checks():
+        morning_action.setChecked(overlay.mode == 'MORNING')
+        night_action.setChecked(overlay.mode == 'NIGHT')
+        free_action.setChecked(overlay.mode == 'FREE')
+        
+    menu.aboutToShow.connect(update_menu_checks)
+    tray_icon.setContextMenu(menu)
+    
+    def update_tray_visibility():
+        show_tray = True
+        if os.path.exists(CONFIG_PATH):
+            try:
+                with open(CONFIG_PATH, "r", encoding="utf-8") as f:
+                    show_tray = json.load(f).get("show_tray_icon", True)
+            except Exception:
+                pass
+        if show_tray and QSystemTrayIcon.isSystemTrayAvailable():
+            tray_icon.show()
+        else:
+            tray_icon.hide()
+
+    settings_dialog.config_updated.connect(update_tray_visibility)
+    update_tray_visibility()
+    
+    if getattr(overlay, "display_mode", "overlay") in ("overlay", "both"):
+        overlay.show_overlay()
     
     # Check for updates if enabled
     auto_update = True

@@ -68,7 +68,7 @@ else
         WRAPPER_PATH="$INSTALL_DIR/sebha"
         cat << EOF > "$WRAPPER_PATH"
 #!/bin/bash
-export QT_QPA_PLATFORM=xcb
+export QT_QPA_PLATFORM="wayland;xcb"
 cd "$SCRIPT_DIR"
 exec python3 "$SCRIPT_DIR/main.pyw" "\$@"
 EOF
