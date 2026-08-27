@@ -29,7 +29,7 @@
 
 ## ✨ المميزات
 
-- **📺 واجهة زجاجية حديثة**: تصميم واجهة مستخدم شفافة خالية من الإطارات وتأثير زجاجي راقٍ.
+- **📺 واجهة زجاجية أو إشعارات نظام أوبونتو الأصلية**: الاختيار بين الواجهة الشفافة العائمة (Overlay)، أو إشعارات سطح المكتب الأصلية لنظام أوبونتو (Native Desktop Notifications)، أو كلاهما معاً.
 - **⚡ تشغيل مزدوج**: ربط أي زر جانبي للفأرة و/أو مفتاح بلوحة المفاتيح في نفس الوقت ليعمل كزر للتسبيح.
 - **☀️/🌙 جلسات الأذكار**: قاعدة بيانات متكاملة لأذكار الصباح وأذكار المساء.
   - يعرض كل ذكر، وفضله/مصدره، والعدد المطلوب (مثل `1/3`).
@@ -101,7 +101,7 @@ Designed to stay completely out of your way as a background process (no taskbar 
 
 ## ✨ Features
 
-- **📺 Modern Glassy Overlay**: Semi-transparent, frameless, and premium glassmorphic UI.
+- **📺 Modern Glassy Overlay & Native Ubuntu Notifications**: Choose between the floating glassy overlay, native Ubuntu desktop notifications (`notify-send`), or both simultaneously.
 - **⚡ Dual Triggers**: Bind any mouse side button (e.g., FWD / XButton2) and/or keyboard key simultaneously as your click counter.
 - **☀️/🌙 Athkar Sessions**: Fully integrated Morning (**أذكار الصباح**) and Night (**أذكار المساء**) Athkar database.
   - Displays each zikr, its benefit/source, and its target counter (e.g., `1/3`).
