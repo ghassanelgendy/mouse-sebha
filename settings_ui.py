@@ -240,9 +240,9 @@ chmod +x "{current_exe}"
 
 unset _MEIPASS
 unset _MEIPASS2
-for var in \$(env | cut -d= -f1); do
-  if [[ "\$var" =~ ^_PYI_ ]]; then
-    unset "\$var"
+for var in $(env | cut -d= -f1); do
+  if [[ "$var" =~ ^_PYI_ ]]; then
+    unset "$var"
   fi
 done
 export PYINSTALLER_RESET_ENVIRONMENT=1
@@ -363,7 +363,7 @@ class SettingsDialog(QDialog):
         super().__init__(parent)
         self.current_version = current_version
         self.setWindowTitle("Sebha Settings")
-        self.setFixedSize(450, 400)
+        self.setFixedSize(460, 440)
         
         self.config = {}
         self.load_config()
@@ -495,6 +495,24 @@ class SettingsDialog(QDialog):
         self.font_combo.currentTextChanged.connect(self.on_font_changed)
         font_layout.addWidget(self.font_combo)
         settings_layout.addLayout(font_layout)
+        
+        # Display Mode Settings
+        mode_layout = QHBoxLayout()
+        mode_layout.addWidget(QLabel("Display Mode:"))
+        self.display_mode_combo = QComboBox()
+        self.display_mode_combo.addItem("Floating Overlay Only", "overlay")
+        self.display_mode_combo.addItem("Native Notification Only", "notification")
+        self.display_mode_combo.addItem("Both (Overlay & Notification)", "both")
+        
+        current_mode = self.config.get("display_mode", "overlay")
+        for i in range(self.display_mode_combo.count()):
+            if self.display_mode_combo.itemData(i) == current_mode:
+                self.display_mode_combo.setCurrentIndex(i)
+                break
+                
+        self.display_mode_combo.currentIndexChanged.connect(self.on_display_mode_changed)
+        mode_layout.addWidget(self.display_mode_combo)
+        settings_layout.addLayout(mode_layout)
         
         # Position Settings
         pos_layout = QHBoxLayout()
@@ -868,6 +886,11 @@ class SettingsDialog(QDialog):
 
     def on_font_changed(self, text):
         self.config["font_family"] = text
+        self.save_config()
+
+    def on_display_mode_changed(self, index):
+        mode_data = self.display_mode_combo.itemData(index)
+        self.config["display_mode"] = mode_data
         self.save_config()
 
     def on_position_changed(self, text):
