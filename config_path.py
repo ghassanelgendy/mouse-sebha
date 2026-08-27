@@ -40,11 +40,13 @@ DEFAULT_CONFIG = {
     ],
     "trigger_mouse": "Button.x2",
     "trigger_keyboard": "",
+    "display_mode": "overlay",
     "auto_update": True,
     "show_tray_icon": True,
     "hadith_reminder_enabled": True,
     "hadith_reminder_interval": 30,
     "font_family": "Default",
+    "font_size": 18,
     "overlay_position": "Bottom-Right",
     "stats": {
         "total_free_clicks": 0,
