@@ -125,13 +125,10 @@ def notify_count(zikr: str, count: int, target: int = None, benefit: str = "", m
     if is_notify_send_available():
         cmd = [
             "notify-send",
-            "-r", str(NOTIFICATION_REPLACE_ID_COUNT),
-            "-e",
             "-a", "Sebha",
             "-t", "2500",
-            "-h", "string:x-canonical-private-synchronous:sebha-counter",
+            "-u", "normal",
             "-h", "string:synchronous:sebha-counter",
-            "-h", "int:transient:1"
         ]
         if t_val is not None and t_val > 1:
             progress = max(0, min(100, int((c_val / t_val) * 100)))
@@ -214,10 +211,9 @@ def notify_hadith(text: str, benefit: str = "", tray_icon = None):
     if is_notify_send_available():
         cmd = [
             "notify-send",
-            "-r", str(NOTIFICATION_REPLACE_ID_HADITH),
             "-a", "Sebha",
             "-t", "8000",
-            "-h", "string:x-canonical-private-synchronous:sebha-hadith",
+            "-u", "normal",
             "-h", "string:synchronous:sebha-hadith",
             title,
             body
@@ -289,9 +285,9 @@ def notify_session_completed(mode: str = "MORNING", tray_icon = None):
     if is_notify_send_available():
         cmd = [
             "notify-send",
-            "-r", str(NOTIFICATION_REPLACE_ID_GENERAL),
             "-a", "Sebha",
             "-t", "5000",
+            "-u", "normal",
             title,
             body
         ]
