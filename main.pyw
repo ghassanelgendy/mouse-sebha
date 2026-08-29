@@ -28,7 +28,7 @@ from overlay_ui import SebhaOverlay
 from input_listener import InputListener
 from settings_ui import SettingsDialog, UpdateCheckerThread, apply_update_and_restart
 
-APP_VERSION = "v1.0.22"
+APP_VERSION = "v1.0.23"
 from config_path import CONFIG_PATH
 
 def resource_path(relative_path):
