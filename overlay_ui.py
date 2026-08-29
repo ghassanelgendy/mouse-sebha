@@ -102,6 +102,38 @@ class SebhaOverlay(QWidget):
         # Warm up styles, layouts, and fonts to prevent lag on first hover
         self.warm_up()
 
+        # Connect notification click listener to Athkar selection modal
+        try:
+            notif_listener = notification_manager.get_notification_listener()
+            notif_listener.notification_clicked.connect(self.open_athkar_modal)
+        except Exception as e:
+            print("Could not connect notification listener in overlay:", e)
+
+    def open_athkar_modal(self):
+        try:
+            from athkar_modal import AthkarSelectionModal
+            font_family = self.get_current_arabic_font_family()
+            
+            if hasattr(self, "_athkar_modal") and self._athkar_modal and self._athkar_modal.isVisible():
+                self._athkar_modal.raise_()
+                self._athkar_modal.activateWindow()
+                return
+
+            self._athkar_modal = AthkarSelectionModal(font_family=font_family)
+            
+            def on_mode_selected(mode):
+                if mode == "MORNING":
+                    self.start_session("MORNING")
+                elif mode == "NIGHT":
+                    self.start_session("NIGHT")
+                elif mode == "FREE":
+                    self.exit_session()
+                    
+            self._athkar_modal.mode_selected.connect(on_mode_selected)
+            self._athkar_modal.show_centered()
+        except Exception as e:
+            print("Error opening Athkar selection modal:", e)
+
     def get_overlay_opacity(self):
         return getattr(self, "_overlay_opacity", 1.0)
         
@@ -799,6 +831,9 @@ class SebhaOverlay(QWidget):
         
         show_action = menu.addAction("إخفاء الواجهة (Hide Overlay)" if self.isVisible() and self.overlay_opacity > 0.1 else "إظهار الواجهة (Show Overlay)")
         show_action.triggered.connect(lambda: self.hide_overlay_instantly() if self.isVisible() and self.overlay_opacity > 0.1 else self.show_overlay())
+        
+        choose_action = menu.addAction("اختيار الورد... (Choose Athkar)")
+        choose_action.triggered.connect(self.open_athkar_modal)
         
         menu.addSeparator()
         

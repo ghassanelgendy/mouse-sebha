@@ -146,10 +146,14 @@ def main():
     # System Tray
     tray_icon = QSystemTrayIcon(app_icon, app)
     tray_icon.setToolTip("Sebha")
+    tray_icon.messageClicked.connect(overlay.open_athkar_modal)
     
     menu = QMenu()
     show_action = menu.addAction("إظهار الواجهة (Show Overlay)")
     show_action.triggered.connect(overlay.show_overlay)
+    
+    choose_athkar_action = menu.addAction("اختيار الورد... (Choose Athkar)")
+    choose_athkar_action.triggered.connect(overlay.open_athkar_modal)
     
     menu.addSeparator()
     
