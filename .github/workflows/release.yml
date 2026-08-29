@@ -132,30 +132,19 @@ jobs:
           cp assets/logo.png deb_pkg/usr/share/icons/hicolor/256x256/apps/sebha.png
         fi
 
-        cat << EOF > deb_pkg/DEBIAN/control
-Package: sebha
-Version: ${VER_NUM}
-Section: utils
-Priority: optional
-Architecture: amd64
-Depends: libxcb-cursor0, libxcb-xinerama0, libxkbcommon-x11-0, libgl1
-Maintainer: Ghassan Elgendy
-Description: Mouse Sebha - Smart Athkar companion overlay for Linux
- A lightweight background application that functions as a smart Sebha
- and Athkar companion.
-EOF
+        export VER_NUM
+        python3 -c "
+        import os
+        ver = os.environ.get('VER_NUM', '1.0.0')
+        with open('deb_pkg/DEBIAN/control', 'w', encoding='utf-8') as f:
+            f.write(f'Package: sebha\nVersion: {ver}\nSection: utils\nPriority: optional\nArchitecture: amd64\nDepends: libxcb-cursor0, libxcb-xinerama0, libxkbcommon-x11-0, libgl1\nMaintainer: Ghassan Elgendy\nDescription: Mouse Sebha - Smart Athkar companion overlay for Linux\n A lightweight background application that functions as a smart Sebha and Athkar companion.\n')
+        "
 
-        cat << 'EOF' > deb_pkg/usr/share/applications/sebha.desktop
-[Desktop Entry]
-Name=Sebha
-Comment=Mouse Sebha - Athkar companion overlay
-Exec=/usr/bin/sebha
-Icon=sebha
-Terminal=false
-Type=Application
-Categories=Utility;
-X-GNOME-Autostart-enabled=true
-EOF
+        python3 -c "
+        desktop_content = '[Desktop Entry]\nName=Sebha\nComment=Mouse Sebha - Athkar companion overlay\nExec=/usr/bin/sebha\nIcon=sebha\nTerminal=false\nType=Application\nCategories=Utility;\nX-GNOME-Autostart-enabled=true\n'
+        with open('deb_pkg/usr/share/applications/sebha.desktop', 'w', encoding='utf-8') as f:
+            f.write(desktop_content)
+        "
 
         chmod 644 deb_pkg/usr/share/applications/sebha.desktop
 
