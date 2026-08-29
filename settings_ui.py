@@ -71,9 +71,18 @@ class AssignButtonDialog(QDialog):
         else:
             super().keyPressEvent(event)
 
+import re
+
+def parse_semver(v_str):
+    try:
+        parts = [int(p) for p in re.findall(r'\d+', str(v_str))]
+        return tuple(parts) if parts else (0,)
+    except Exception:
+        return (0,)
+
 class UpdateCheckerThread(QThread):
-    update_downloaded = pyqtSignal(str)
-    no_update_found = pyqtSignal()
+    update_downloaded = pyqtSignal(str, str) # (new_exe_path, latest_version)
+    no_update_found = pyqtSignal(str)        # (latest_version)
     check_failed = pyqtSignal(str)
 
     def __init__(self, current_version):
@@ -87,15 +96,15 @@ class UpdateCheckerThread(QThread):
             url = "https://api.github.com/repos/ghassanelgendy/mouse-sebha/releases/latest"
             req = urllib.request.Request(
                 url, 
-                headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
+                headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Sebha-App'}
             )
-            with urllib.request.urlopen(req) as response:
+            with urllib.request.urlopen(req, timeout=15) as response:
                 data = json.loads(response.read().decode('utf-8'))
                 
             latest_version = data.get("tag_name", "").strip("v")
             current = self.current_version.strip("v")
             
-            if latest_version and latest_version != current:
+            if latest_version and parse_semver(latest_version) > parse_semver(current):
                 assets = data.get("assets", [])
                 
                 system_name = platform.system()
@@ -121,20 +130,29 @@ class UpdateCheckerThread(QThread):
                         new_file_name = "Sebha.new.exe" if system_name == "Windows" else "Sebha.new"
                         new_exe_path = os.path.join(temp_dir, new_file_name)
                         
+                        if os.path.exists(new_exe_path):
+                            try:
+                                os.remove(new_exe_path)
+                            except Exception:
+                                pass
+
                         urllib.request.urlretrieve(download_url, new_exe_path)
                         
-                        if os.path.exists(new_exe_path) and os.path.getsize(new_exe_path) > 1000000:
-                            self.update_downloaded.emit(new_exe_path)
+                        if os.path.exists(new_exe_path) and os.path.getsize(new_exe_path) > 100000:
+                            if system_name != "Windows":
+                                try:
+                                    os.chmod(new_exe_path, 0o755)
+                                except Exception:
+                                    pass
+                            self.update_downloaded.emit(new_exe_path, latest_version)
                         else:
-                            self.check_failed.emit("Downloaded file is empty or too small.")
+                            self.check_failed.emit("Downloaded file is empty or corrupted.")
                     else:
-                        # If the release exists but doesn't have the binary for our OS yet,
-                        # treat it as no update found for our platform.
-                        self.no_update_found.emit()
+                        self.no_update_found.emit(latest_version)
                 else:
                     self.check_failed.emit(f"Unsupported operating system: {system_name}")
             else:
-                self.no_update_found.emit()
+                self.no_update_found.emit(latest_version if latest_version else current)
         except Exception as e:
             self.check_failed.emit(str(e))
 
@@ -144,11 +162,11 @@ def apply_update_and_restart(new_exe_path):
     import sys
     import os
     
-    current_exe = sys.executable
+    current_exe = os.path.abspath(sys.executable)
     current_pid = os.getpid()
     system_name = platform.system()
     
-    # Clean PyInstaller environment variables in the parent python process environment copy
+    # Clean PyInstaller environment variables in the parent process environment copy
     env = os.environ.copy()
     env["PYINSTALLER_RESET_ENVIRONMENT"] = "1"
     for key in list(env.keys()):
@@ -156,30 +174,22 @@ def apply_update_and_restart(new_exe_path):
             env.pop(key, None)
             
     if system_name == "Windows":
-        # In Windows, Start-Process inside PowerShell can bypass PowerShell's environment.
-        # We explicitly clear all PyInstaller environment variables inside the PowerShell session 
-        # before invoking Start-Process to guarantee the child runs in a clean environment.
         ps_script = f'''
 $LogPath = Join-Path $env:TEMP "sebha_update.log"
 "Starting update. Parent PID: {current_pid}" | Out-File $LogPath
 try {{
-    # Try to stop parent process if it is still running
     $proc = Get-Process -Id {current_pid} -ErrorAction SilentlyContinue
     if ($proc) {{
         "Stopping parent process {current_pid}..." | Out-File $LogPath -Append
         Stop-Process -Id {current_pid} -Force -ErrorAction SilentlyContinue
     }}
     
-    # Wait for the process to exit completely
     $limit = 10
     while ((Get-Process -Id {current_pid} -ErrorAction SilentlyContinue) -and ($limit -gt 0)) {{
-        "Waiting for parent process to exit..." | Out-File $LogPath -Append
         Start-Sleep -Seconds 1
         $limit--
     }}
     
-    # Retry loop to remove the old executable
-    "Removing old executable: {current_exe}" | Out-File $LogPath -Append
     $deleted = $false
     for ($i = 0; $i -lt 10; $i++) {{
         try {{
@@ -187,16 +197,10 @@ try {{
             $deleted = $true
             break
         }} catch {{
-            "Deletion attempt $($i+1) failed: $($_.Exception.Message). Retrying..." | Out-File $LogPath -Append
             Start-Sleep -Seconds 1
         }}
     }}
-    if (-not $deleted) {{
-        throw "Failed to delete old executable after 10 attempts."
-    }}
     
-    # Retry loop to move the new executable
-    "Moving new executable {new_exe_path} to {current_exe}" | Out-File $LogPath -Append
     $moved = $false
     for ($i = 0; $i -lt 5; $i++) {{
         try {{
@@ -204,23 +208,16 @@ try {{
             $moved = $true
             break
         }} catch {{
-            "Move attempt $($i+1) failed: $($_.Exception.Message). Retrying..." | Out-File $LogPath -Append
             Start-Sleep -Seconds 1
         }}
     }}
-    if (-not $moved) {{
-        throw "Failed to move new executable after 5 attempts."
-    }}
     
-    "Cleaning environment variables..." | Out-File $LogPath -Append
     Remove-Item env:_MEIPASS -ErrorAction SilentlyContinue
     Remove-Item env:_MEIPASS2 -ErrorAction SilentlyContinue
     Get-ChildItem env:* | Where-Object {{ $_.Name -like "_PYI_*" }} | Remove-Item -ErrorAction SilentlyContinue
     $env:PYINSTALLER_RESET_ENVIRONMENT = "1"
     
-    "Starting updated process..." | Out-File $LogPath -Append
     Start-Process "{current_exe}"
-    "Update completed successfully." | Out-File $LogPath -Append
 }} catch {{
     $_ | Out-File $LogPath -Append
 }}
@@ -231,13 +228,19 @@ try {{
             env=env
         )
     else:
-        # In Unix, we do the same env cleaning inside the bash/sh shell before launching the new process.
+        # Linux & macOS updater script
         sh_script = f'''
-sleep 2
+# Wait for parent PID to exit cleanly
+while kill -0 {current_pid} 2>/dev/null; do
+    sleep 0.2
+done
+
+# Replace executable
 rm -f "{current_exe}"
 mv "{new_exe_path}" "{current_exe}"
-chmod +x "{current_exe}"
+chmod 755 "{current_exe}"
 
+# Clean PyInstaller env vars
 unset _MEIPASS
 unset _MEIPASS2
 for var in $(env | cut -d= -f1); do
@@ -247,7 +250,8 @@ for var in $(env | cut -d= -f1); do
 done
 export PYINSTALLER_RESET_ENVIRONMENT=1
 
-"{current_exe}" &
+# Launch updated binary detached
+nohup "{current_exe}" >/dev/null 2>&1 &
 '''
         subprocess.Popen(["sh", "-c", sh_script], env=env)
         
@@ -456,11 +460,16 @@ class SettingsDialog(QDialog):
         self.autoupdate_checkbox.toggled.connect(self.toggle_autoupdate)
         settings_layout.addWidget(self.autoupdate_checkbox)
         
-        # System Tray Icon Settings
-        self.tray_checkbox = QCheckBox("Show System Tray Icon")
+        # System Tray / AppIndicator Settings
+        self.tray_checkbox = QCheckBox("Show AppIndicator / System Tray Icon (إظهار أيقونة شريط المهام)")
         self.tray_checkbox.setChecked(self.config.get("show_tray_icon", True))
         self.tray_checkbox.toggled.connect(self.toggle_tray_icon)
         settings_layout.addWidget(self.tray_checkbox)
+
+        tray_hint = QLabel("💡 Uncheck to run Sebha silently in the background without a top bar icon.\n(إلغاء التحديد يخفي الأيقونة ليعمل التطبيق في الخلفية تماماً)")
+        tray_hint.setStyleSheet("font-size: 10px; color: #777777; margin-left: 20px; margin-bottom: 6px;")
+        tray_hint.setWordWrap(True)
+        settings_layout.addWidget(tray_hint)
         
         # Hadith Reminder Settings
         hadith_group = QHBoxLayout()
@@ -899,28 +908,40 @@ class SettingsDialog(QDialog):
 
     def manual_update_check(self):
         self.update_btn.setEnabled(False)
-        self.update_btn.setText("Checking...")
+        self.update_btn.setText("Checking for updates...")
         
         self.manual_updater = UpdateCheckerThread(self.current_version)
         
-        def on_downloaded(new_exe_path):
+        def on_downloaded(new_exe_path, latest_version):
             self.update_btn.setEnabled(True)
             self.update_btn.setText("Check for Updates")
+            
+            if not getattr(sys, 'frozen', False):
+                msg = QMessageBox(self)
+                msg.setWindowTitle("Update Available")
+                msg.setText(f"A new version ({latest_version}) is available!")
+                msg.setInformativeText("You are running from Python source code. Please pull the latest changes from GitHub or download the compiled executable.")
+                msg.setIcon(QMessageBox.Icon.Information)
+                msg.setStandardButtons(QMessageBox.StandardButton.Ok)
+                msg.exec()
+                return
+
             msg = QMessageBox(self)
-            msg.setWindowTitle("Update Available")
-            msg.setText("A new update has been downloaded successfully!")
+            msg.setWindowTitle("Update Ready")
+            msg.setText(f"Version {latest_version} downloaded successfully!")
             msg.setInformativeText("The application will restart to apply the update.")
             msg.setIcon(QMessageBox.Icon.Information)
-            msg.setStandardButtons(QMessageBox.StandardButton.Ok)
-            msg.exec()
-            apply_update_and_restart(new_exe_path)
+            msg.setStandardButtons(QMessageBox.StandardButton.Ok | QMessageBox.StandardButton.Cancel)
+            ret = msg.exec()
+            if ret == QMessageBox.StandardButton.Ok:
+                apply_update_and_restart(new_exe_path)
             
-        def on_no_update():
+        def on_no_update(latest_version):
             self.update_btn.setEnabled(True)
             self.update_btn.setText("Check for Updates")
             msg = QMessageBox(self)
             msg.setWindowTitle("Up to Date")
-            msg.setText("You are running the latest version!")
+            msg.setText(f"You are running the latest version ({self.current_version})!")
             msg.setIcon(QMessageBox.Icon.Information)
             msg.setStandardButtons(QMessageBox.StandardButton.Ok)
             msg.exec()

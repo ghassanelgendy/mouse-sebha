@@ -228,10 +228,10 @@ def main():
     if auto_update and getattr(sys, 'frozen', False):
         updater_thread = UpdateCheckerThread(APP_VERSION)
         
-        def on_update_ready(new_exe_path):
+        def on_update_ready(new_exe_path, latest_version=""):
             msg = QMessageBox()
             msg.setWindowTitle("Update Available")
-            msg.setText("A new update has been downloaded successfully!")
+            msg.setText(f"A new update ({latest_version}) has been downloaded successfully!" if latest_version else "A new update has been downloaded successfully!")
             msg.setInformativeText("The application will restart to apply the update.")
             msg.setIcon(QMessageBox.Icon.Information)
             msg.setStandardButtons(QMessageBox.StandardButton.Ok)
