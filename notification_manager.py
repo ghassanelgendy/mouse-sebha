@@ -55,6 +55,10 @@ def _to_int(val, default=None):
     except (ValueError, TypeError):
         return default
 
+# Unified tracking set and ID to guarantee replacing older notifications and ignoring other apps
+_sent_notification_ids = {NOTIFICATION_REPLACE_ID}
+_last_notification_id = 0
+
 class NotificationListener(QObject):
     notification_clicked = pyqtSignal()
 
@@ -64,7 +68,8 @@ class NotificationListener(QObject):
 
     @pyqtSlot(int, str)
     def handle_action(self, nid, action_key):
-        self.notification_clicked.emit()
+        if int(nid) in _sent_notification_ids or (int(nid) == _last_notification_id and _last_notification_id > 0):
+            self.notification_clicked.emit()
 
 _global_listener = None
 
@@ -74,9 +79,10 @@ def get_notification_listener() -> NotificationListener:
         _global_listener = NotificationListener()
     return _global_listener
 
-# Initialize D-Bus with GLib mainloop support (essential for receiving unicast signals in Qt on Linux)
 _dbus_bus = None
 _dbus_iface = None
+_dbus_listener_active = False
+
 try:
     import dbus
     from dbus.mainloop.glib import DBusGMainLoop
@@ -86,8 +92,9 @@ try:
     _dbus_iface = dbus.Interface(_notify_obj, "org.freedesktop.Notifications")
     
     def _on_dbus_action_invoked(nid, action_key):
-        listener = get_notification_listener()
-        listener.notification_clicked.emit()
+        if int(nid) in _sent_notification_ids or (int(nid) == _last_notification_id and _last_notification_id > 0):
+            listener = get_notification_listener()
+            listener.notification_clicked.emit()
 
     _dbus_bus.add_signal_receiver(
         _on_dbus_action_invoked,
@@ -95,24 +102,26 @@ try:
         dbus_interface="org.freedesktop.Notifications",
         path="/org/freedesktop/Notifications"
     )
+    _dbus_listener_active = True
 except Exception as e:
     _dbus_iface = None
     _dbus_bus = None
 
-# Also connect QtDBus as redundant receiver
-try:
-    _qbus = QDBusConnection.sessionBus()
-    if _qbus.isConnected():
-        listener = get_notification_listener()
-        _qbus.connect(
-            "",
-            "/org/freedesktop/Notifications",
-            "org.freedesktop.Notifications",
-            "ActionInvoked",
-            listener.handle_action
-        )
-except Exception:
-    pass
+# If native dbus-python listener wasn't registered, fallback to QtDBus
+if not _dbus_listener_active:
+    try:
+        _qbus = QDBusConnection.sessionBus()
+        if _qbus.isConnected():
+            listener = get_notification_listener()
+            _qbus.connect(
+                "",
+                "/org/freedesktop/Notifications",
+                "org.freedesktop.Notifications",
+                "ActionInvoked",
+                listener.handle_action
+            )
+    except Exception:
+        pass
 
 # Libnotify setup
 _libnotify_available = False
@@ -129,9 +138,6 @@ try:
 except Exception:
     _libnotify_available = False
 
-# Unified tracking ID to guarantee replacing / erasing older notifications in menu
-_last_notification_id = 0
-
 def is_notify_send_available():
     return sys.platform.startswith("linux") and shutil.which("notify-send") is not None
 
@@ -145,7 +151,7 @@ def close_current_notification():
             pass
 
 def _send_desktop_notification(title: str, body: str, timeout_ms: int = 4000, progress: int = None, tray_icon = None):
-    global _last_notification_id, _dbus_iface
+    global _last_notification_id, _dbus_iface, _sent_notification_ids
 
     # Ensure notification listener is initialized
     get_notification_listener()
@@ -179,6 +185,11 @@ def _send_desktop_notification(title: str, body: str, timeout_ms: int = 4000, pr
                 dbus.Int32(timeout_ms)
             )
             _last_notification_id = int(nid)
+            _sent_notification_ids.add(int(nid))
+            if len(_sent_notification_ids) > 50:
+                _sent_notification_ids.clear()
+                _sent_notification_ids.add(NOTIFICATION_REPLACE_ID)
+                _sent_notification_ids.add(int(nid))
             return
         except Exception as e:
             print("Error executing direct D-Bus Notify:", e)
@@ -202,6 +213,7 @@ def _send_desktop_notification(title: str, body: str, timeout_ms: int = 4000, pr
         try:
             subprocess.Popen(cmd)
             _last_notification_id = NOTIFICATION_REPLACE_ID
+            _sent_notification_ids.add(NOTIFICATION_REPLACE_ID)
             return
         except Exception as e:
             print("Error executing notify-send:", e)
