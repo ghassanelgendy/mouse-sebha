@@ -52,7 +52,6 @@ jobs:
 
       - name: Build Debian Package (.deb)
         run: |
-          VER_NUM="1.0.0"
           mkdir -p deb_pkg/DEBIAN
           mkdir -p deb_pkg/usr/bin
           mkdir -p deb_pkg/usr/share/applications
@@ -65,9 +64,12 @@ jobs:
             cp assets/logo.png deb_pkg/usr/share/icons/hicolor/256x256/apps/sebha.png
           fi
 
+          export VER_NUM="1.0.0"
           python3 -c "
+          import os
+          ver = os.environ.get('VER_NUM', '1.0.0')
           with open('deb_pkg/DEBIAN/control', 'w', encoding='utf-8') as f:
-              f.write(f'Package: sebha\nVersion: {VER_NUM}\nSection: utils\nPriority: optional\nArchitecture: amd64\nDepends: libxcb-cursor0, libxcb-xinerama0, libxkbcommon-x11-0, libgl1\nMaintainer: Ghassan Elgendy\nDescription: Mouse Sebha - Smart Athkar companion overlay for Linux\n A lightweight background application that functions as a smart Sebha and Athkar companion.\n')
+              f.write(f'Package: sebha\nVersion: {ver}\nSection: utils\nPriority: optional\nArchitecture: amd64\nDepends: libxcb-cursor0, libxcb-xinerama0, libxkbcommon-x11-0, libgl1\nMaintainer: Ghassan Elgendy\nDescription: Mouse Sebha - Smart Athkar companion overlay for Linux\n A lightweight background application that functions as a smart Sebha and Athkar companion.\n')
           "
 
           python3 -c "
