@@ -1,0 +1,89 @@
+name: Linux Build & CI
+
+on:
+  push:
+    branches:
+      - main
+    paths-ignore:
+      - '**.md'
+      - 'LICENSE'
+      - 'installer.iss'
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-linux:
+    name: Build & Test Linux App
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq libxcb-cursor0 libxcb-xinerama0 libxkbcommon-x11-0 libgl1 libdbus-1-dev libglib2.0-dev
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller pillow
+
+      - name: Syntax & Compilation Check
+        run: |
+          python -m py_compile main.pyw overlay_ui.py settings_ui.py input_listener.py notification_manager.py athkar_modal.py
+
+      - name: Build Executable with PyInstaller
+        run: |
+          pyinstaller --noconsole --onefile --icon=assets/logo.ico --add-data "assets:assets" --add-data "db.json:." --name Sebha-Linux main.pyw
+
+      - name: Build Debian Package (.deb)
+        run: |
+          VER_NUM="1.0.0"
+          mkdir -p deb_pkg/DEBIAN
+          mkdir -p deb_pkg/usr/bin
+          mkdir -p deb_pkg/usr/share/applications
+          mkdir -p deb_pkg/usr/share/icons/hicolor/256x256/apps
+          
+          cp dist/Sebha-Linux deb_pkg/usr/bin/sebha
+          chmod 755 deb_pkg/usr/bin/sebha
+          
+          if [ -f assets/logo.png ]; then
+            cp assets/logo.png deb_pkg/usr/share/icons/hicolor/256x256/apps/sebha.png
+          fi
+
+          python3 -c "
+          with open('deb_pkg/DEBIAN/control', 'w', encoding='utf-8') as f:
+              f.write(f'Package: sebha\nVersion: {VER_NUM}\nSection: utils\nPriority: optional\nArchitecture: amd64\nDepends: libxcb-cursor0, libxcb-xinerama0, libxkbcommon-x11-0, libgl1\nMaintainer: Ghassan Elgendy\nDescription: Mouse Sebha - Smart Athkar companion overlay for Linux\n A lightweight background application that functions as a smart Sebha and Athkar companion.\n')
+          "
+
+          python3 -c "
+          desktop_content = '[Desktop Entry]\nName=Sebha\nComment=Mouse Sebha - Athkar companion overlay\nExec=/usr/bin/sebha\nIcon=sebha\nTerminal=false\nType=Application\nCategories=Utility;\nX-GNOME-Autostart-enabled=true\n'
+          with open('deb_pkg/usr/share/applications/sebha.desktop', 'w', encoding='utf-8') as f:
+              f.write(desktop_content)
+          "
+
+          chmod 644 deb_pkg/usr/share/applications/sebha.desktop
+          dpkg-deb --build deb_pkg dist/Sebha-Linux.deb
+
+      - name: Upload Linux Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: sebha-linux-ci-build
+          path: |
+            dist/Sebha-Linux
+            dist/Sebha-Linux.deb
+          if-no-files-found: error
