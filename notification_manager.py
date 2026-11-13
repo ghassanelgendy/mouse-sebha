@@ -4,7 +4,13 @@ import shutil
 import subprocess
 import re
 from PyQt6.QtCore import QObject, pyqtSignal, pyqtSlot
-from PyQt6.QtDBus import QDBusConnection
+if sys.platform.startswith("linux"):
+    try:
+        from PyQt6.QtDBus import QDBusConnection
+    except ImportError:
+        QDBusConnection = None
+else:
+    QDBusConnection = None
 
 NOTIFICATION_REPLACE_ID = 42100
 
@@ -108,7 +114,7 @@ except Exception as e:
     _dbus_bus = None
 
 # If native dbus-python listener wasn't registered, fallback to QtDBus
-if not _dbus_listener_active:
+if not _dbus_listener_active and QDBusConnection is not None:
     try:
         _qbus = QDBusConnection.sessionBus()
         if _qbus.isConnected():
@@ -150,8 +156,15 @@ def close_current_notification():
         except Exception:
             pass
 
+_default_tray_icon = None
+
+def set_tray_icon(tray_icon):
+    global _default_tray_icon
+    _default_tray_icon = tray_icon
+
 def _send_desktop_notification(title: str, body: str, timeout_ms: int = 4000, progress: int = None, tray_icon = None):
     global _last_notification_id, _dbus_iface, _sent_notification_ids
+    tray_icon = tray_icon or _default_tray_icon
 
     # Ensure notification listener is initialized
     get_notification_listener()

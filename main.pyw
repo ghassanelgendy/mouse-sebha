@@ -5,11 +5,11 @@ import socket
 # Ultra-fast early socket IPC sender (< 30ms, no PyQt import overhead)
 SOCKET_NAME = f"/tmp/mouse_sebha_{os.getuid()}.sock" if sys.platform != "win32" else "mouse_sebha_ipc_socket"
 
-if len(sys.argv) > 1:
+if len(sys.argv) > 1 and sys.platform != "win32":
     arg = sys.argv[1].lower()
     if arg in ("--increment", "-i", "increment", "--show", "-s", "show"):
         try:
-            s = socket.socket(socket.AF_UNIX if sys.platform != "win32" else socket.AF_INET, socket.SOCK_STREAM)
+            s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
             s.connect(SOCKET_NAME)
             cmd = "INCREMENT" if arg in ("--increment", "-i", "increment") else "SHOW"
             s.sendall(cmd.encode("utf-8"))
@@ -24,6 +24,7 @@ from PyQt6.QtGui import QIcon, QFontDatabase, QFont
 from PyQt6.QtCore import Qt, QThread, pyqtSignal
 from PyQt6.QtNetwork import QLocalServer, QLocalSocket
 
+import notification_manager
 from overlay_ui import SebhaOverlay
 from input_listener import InputListener
 from settings_ui import SettingsDialog, UpdateCheckerThread, apply_update_and_restart
@@ -46,10 +47,24 @@ if sys.platform.startswith("linux"):
     os.environ["QT_ENABLE_HIGHDPI_SCALING"] = "1"
 
 def handle_existing_instance():
+    cmd = "INCREMENT" if any(a.lower() in ("--increment", "-i", "increment") for a in sys.argv[1:]) else "SHOW"
+    if sys.platform == "win32":
+        try:
+            sock = QLocalSocket()
+            sock.connectToServer(SOCKET_NAME)
+            if sock.waitForConnected(200):
+                sock.write(cmd.encode("utf-8"))
+                sock.flush()
+                sock.waitForBytesWritten(200)
+                sock.disconnectFromServer()
+                return True
+        except Exception:
+            pass
+        return False
+
     try:
-        s = socket.socket(socket.AF_UNIX if sys.platform != "win32" else socket.AF_INET, socket.SOCK_STREAM)
+        s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         s.connect(SOCKET_NAME)
-        cmd = "INCREMENT" if ("--increment" in sys.argv or "-i" in sys.argv) else "SHOW"
         s.sendall(cmd.encode("utf-8"))
         s.close()
         return True
@@ -147,6 +162,7 @@ def main():
     tray_icon = QSystemTrayIcon(app_icon, app)
     tray_icon.setToolTip("Sebha")
     tray_icon.messageClicked.connect(overlay.open_athkar_modal)
+    notification_manager.set_tray_icon(tray_icon)
     
     menu = QMenu()
     show_action = menu.addAction("إظهار الواجهة (Show Overlay)")
